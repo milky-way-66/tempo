@@ -283,7 +283,10 @@ function gantt(p: Projection, config: Config, nowISO: string, project?: string):
     // or a 1-day block anchored at the deadline/today.
     let pStart: number, pEnd: number;
     if (t.estMin) {
-      const durMs = Math.max(0.5 * DAY, (t.estMin / (capPerDay * 60)) * DAY);
+      // Length in WORKING days: estimate ÷ capacity-hours-per-day (8 by default),
+      // so 8h = 1 full calendar day. Floor at 1 day so a short task stays visible.
+      const workDays = t.estMin / (capPerDay * 60);
+      const durMs = Math.max(1, workDays) * DAY;
       if (t.deadline) {
         pEnd = DateTime.fromISO(t.deadline, z ? { zone: z } : {}).endOf("day").toMillis();
         pStart = pEnd - durMs;
@@ -299,7 +302,7 @@ function gantt(p: Projection, config: Config, nowISO: string, project?: string):
       pStart = anchor;
       pEnd = anchor + DAY;
     }
-    if (pEnd <= pStart) pEnd = pStart + 0.5 * DAY;
+    if (pEnd <= pStart) pEnd = pStart + DAY;
     const progress = t.estMin ? Math.min(100, Math.round((logged / t.estMin) * 100)) : t.status === "done" ? 100 : 0;
     const over = !!t.deadline && t.status !== "done" && DateTime.fromISO(t.deadline!, z ? { zone: z } : {}).endOf("day").toMillis() < nowMs;
     return {
@@ -325,7 +328,7 @@ function gantt(p: Projection, config: Config, nowISO: string, project?: string):
   return `
   <section class="panel">
     <h2>Work Breakdown <span class="sub">· calendar timeline</span></h2>
-    <p class="sub">One bar per task = the planned timespan (estimate scheduled to its deadline); the fill shows % logged. Switch Day / Week / Month, jump to Today, hover a bar for details.</p>
+    <p class="sub">One bar per task = the planned timespan (estimate at ${capPerDay}h/day, so 8h ≈ 1 day, scheduled to the deadline); the fill shows % logged. Switch Day / Week / Month, jump to Today, hover a bar for details.</p>
     <div class="gantt-wrap"><div id="gantt"></div></div>
     <script>
     (function(){
@@ -336,7 +339,7 @@ function gantt(p: Projection, config: Config, nowISO: string, project?: string):
       var detail = {}; tasks.forEach(function(t){ detail[t.id] = t._details; });
       try {
         new Gantt(el, tasks, {
-          view_mode: 'Week',
+          view_mode: 'Day',
           view_mode_select: true,
           today_button: true,
           scroll_to: ${JSON.stringify(scrollTo)},
