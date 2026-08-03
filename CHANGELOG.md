@@ -2,6 +2,11 @@
 
 All notable changes to Tempo, newest first.
 
+## 0.1.2 — 2026-08-03
+
+- Live board.md + auto-link rituals into Claude Code memory (69bd55d)
+- Add changelog command generated from git history (0090e6c)
+
 ## 0.1.1 — 2026-08-03
 
 - Add deploy scripts and publishConfig for one-command releases (882e9d1)
