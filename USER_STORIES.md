@@ -105,6 +105,32 @@ next plan.
 - These become the reference points the forward-looking layer (E1/E4) later builds on — no schema
   change required.
 
+### P7 — Interruption hits: quick-check the impact, decide whether to replan
+**As a** Planner (mid-week, under pressure), **I want** a fast read on what a new urgent task does to
+my committed plan — before or right as I accept it — **so that** I can tell whether I can absorb it
+or whether I need to replan / reschedule / renegotiate.
+
+> The user's third story: *"During the work week the boss asks me to do some urgent work; I need a
+> quick check on how it affects the plan and whether I need to replan or reschedule."* This is the
+> **live decision-support** moment. It reuses the interruption capture (A2) and answers the question
+> A2 leaves open: *so what?*
+
+**Acceptance (v1 — naive, buildable without the scheduler)**
+- Given a new task with an estimate, the tool compares `remaining committed estimate + new estimate`
+  against `remaining capacity in the period` and states a plain verdict — e.g.
+  `+3h urgent → sprint now 6h over capacity; 2 planned leaves won't fit`.
+- It lists, concretely, which planned leaves are now at risk of slipping (by priority order), so the
+  "what gives" conversation has specifics.
+- Accepting the interruption is a normal `task.switched` event (A2, `reason=urgent`) — the check
+  itself writes nothing; it is a read over the log plus the proposed new task.
+- If declined, nothing is logged — the quick-check must be cheap enough to run *before* committing.
+
+**Acceptance (deferred — full ripple, when history + scheduler exist)**
+- Upgrades to the E2 interruption-ripple diff (re-run schedule, show which *dates* move and which
+  deadlines break) and E3 cost-of-change, using the estimator's ranges instead of a single number.
+- Surfaces E5 mitigations: drop / defer / delegate / renegotiate the date.
+- No schema change between the naive and full versions — same events, richer computation.
+
 ---
 
 ## Epic A — Capture (near-zero overhead; the daily habit)
