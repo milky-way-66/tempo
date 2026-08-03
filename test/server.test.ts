@@ -32,7 +32,7 @@ describe("MCP server", () => {
     const { client } = await connect();
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
     expect(names).toEqual(
-      ["add", "board", "check", "edit", "log", "note", "period", "rename", "report", "start", "stop"].sort(),
+      ["add", "archive", "board", "check", "edit", "log", "note", "period", "rename", "report", "start", "stop"].sort(),
     );
   });
 
@@ -40,7 +40,7 @@ describe("MCP server", () => {
     const { client } = await connect();
     const started = await client.callTool({
       name: "start",
-      arguments: { title: "Write spec", importance: 5, tags: ["doc"] },
+      arguments: { title: "Write spec", important: true, tags: ["doc"] },
     });
     const startedText = (started.content as { type: string; text: string }[])[0].text;
     expect(startedText).toContain("write-spec");
@@ -55,7 +55,7 @@ describe("MCP server", () => {
     const { client } = await connect();
     let errored = false;
     try {
-      const r = await client.callTool({ name: "add", arguments: { importance: 5 } });
+      const r = await client.callTool({ name: "add", arguments: { important: true } });
       errored = r.isError === true;
     } catch {
       errored = true;

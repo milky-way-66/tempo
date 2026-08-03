@@ -25,6 +25,7 @@ const TYPES = new Set<Event["type"]>([
   "task.started",
   "task.stopped",
   "task.updated",
+  "task.archived",
   "note",
   "project.renamed",
   "period.opened",

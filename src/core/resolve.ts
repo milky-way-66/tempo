@@ -27,16 +27,20 @@ const STATUS_RANK: Record<TaskStatus, number> = {
 export function resolve(
   p: Projection,
   query: string,
-  opts: { includeDone?: boolean } = {},
+  opts: { includeDone?: boolean; includeArchived?: boolean } = {},
 ): Resolution {
   const q = norm(query);
   if (!q) return { kind: "none" };
-  if (p.tasks.has(query)) return { kind: "match", id: query }; // exact slug
+  if (p.tasks.has(query)) {
+    const t = p.tasks.get(query)!;
+    if (!t.archived || opts.includeArchived) return { kind: "match", id: query }; // exact slug
+  }
 
   const qtok = new Set(tokens(query));
   const scored: { id: string; title: string; score: number; sr: number; at: string }[] = [];
 
   for (const t of p.tasks.values()) {
+    if (t.archived && !opts.includeArchived) continue;
     if (t.status === "done" && !opts.includeDone) continue;
     const hayStr = norm(`${t.title} ${t.id} ${t.tags.join(" ")}`);
     let score = 0;

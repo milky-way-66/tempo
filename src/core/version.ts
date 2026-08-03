@@ -9,7 +9,7 @@ import type { Paths } from "./config.js";
  * matching step to `MIGRATIONS` in ./migrations. The number of migrations must
  * always equal `STORE_VERSION - 1`.
  */
-export const STORE_VERSION = 2;
+export const STORE_VERSION = 3;
 
 /** The `.tempo/version` marker file. */
 export function versionFile(paths: Paths): string {

@@ -55,7 +55,8 @@ function effortDesc(t: Task, nowISO: string): string {
 }
 
 function taskSentence(p: Projection, t: Task, nowISO: string, config: Config, showProject: boolean): string {
-  const parts = [`importance ${t.importance}, urgency ${t.urgency} (${CLASS[quadrant(t)]})`];
+  const flags = [t.important ? "important" : "not important", t.urgent ? "urgent" : "not urgent"].join(", ");
+  const parts = [`${CLASS[quadrant(t)]} (${flags})`];
   if (showProject && t.project) parts.push(`project ${t.project}`);
   parts.push(effortDesc(t, nowISO));
   const dl = deadlineDesc(t, nowISO, config);
@@ -73,7 +74,10 @@ function grossIn(t: Task, nowISO: string, lo: number, hi: number): number {
 }
 
 export function agentBoard(p: Projection, config: Config, nowISO: string, project?: string): string {
-  const ids = p.order.filter((id) => !project || p.tasks.get(id)!.project === project);
+  const ids = p.order.filter((id) => {
+    const t = p.tasks.get(id)!;
+    return !t.archived && (!project || t.project === project);
+  });
   const tasks = ids.map((id) => p.tasks.get(id)!);
   const doing = tasks.filter((t) => t.status === "doing").length;
   const generated = toDT(nowISO, config).toFormat("yyyy-LL-dd HH:mm");
@@ -99,7 +103,7 @@ export function agentBoard(p: Projection, config: Config, nowISO: string, projec
   const roots: string[] = [];
   for (const id of ids) {
     const t = p.tasks.get(id)!;
-    if (t.parent && (!project || p.tasks.get(t.parent)?.project === project) && p.tasks.has(t.parent)) {
+    if (t.parent && p.tasks.has(t.parent) && !p.tasks.get(t.parent)!.archived && (!project || p.tasks.get(t.parent)?.project === project)) {
       (children.get(t.parent) ?? children.set(t.parent, []).get(t.parent)!).push(id);
     } else {
       roots.push(id);
@@ -178,22 +182,22 @@ export function agentBoard(p: Projection, config: Config, nowISO: string, projec
   }
   out.push(`- Priority mix: B valuable ${share("Q2")}%, A firefighting ${share("Q1")}%, C interruptions ${share("Q3")}%, D low-value ${share("Q4")}%.`);
 
-  // per-axis split, described
-  const imp = new Map<number, number>();
-  const urg = new Map<number, number>();
-  let axisTotal = 0;
+  // where time mostly went, by the 4 categories
+  const cat = new Map<string, number>();
+  let catTotal = 0;
   for (const t of tasks) {
     const g = grossIn(t, nowISO, week.start, week.end);
     if (g <= 0) continue;
-    imp.set(t.importance, (imp.get(t.importance) ?? 0) + g);
-    urg.set(t.urgency, (urg.get(t.urgency) ?? 0) + g);
-    axisTotal += g;
+    const k = CLASS[quadrant(t)].split(",")[0]; // "class A" etc.
+    cat.set(k, (cat.get(k) ?? 0) + g);
+    catTotal += g;
   }
-  if (axisTotal > 0) {
-    const fmt = (m: Map<number, number>) =>
-      [...m.entries()].sort((a, b) => b[0] - a[0]).map(([s, v]) => `${s}: ${formatMin(v)}`).join(", ");
-    out.push(`- By importance: ${fmt(imp)}.`);
-    out.push(`- By urgency: ${fmt(urg)}.`);
+  if (catTotal > 0) {
+    const byCat = [...cat.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => `${k} ${formatMin(v)} (${Math.round((v / catTotal) * 100)}%)`)
+      .join(", ");
+    out.push(`- By category: ${byCat}.`);
   }
   if (wk.eva.length) {
     out.push(

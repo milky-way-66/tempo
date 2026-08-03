@@ -1,10 +1,9 @@
 // Domain types for Tempo — the event log and the derived projection.
 
-// Priority is two independent 1–5 axes (the Eisenhower matrix, quantified):
-// `importance` (value/impact) and `urgency` (time pressure). 1 = lowest,
-// 5 = highest. Together they place a task in a quadrant and let time be
-// distributed across the importance × urgency plane.
-export type Score = 1 | 2 | 3 | 4 | 5;
+// Priority is two independent yes/no axes (the Eisenhower matrix): `important`
+// (value/impact) and `urgent` (time pressure). Together they place a task in one
+// of four categories — A both · B important · C urgent · D neither — so time can
+// be attributed to where it mostly goes.
 export type Reason = "urgent" | "blocked" | "distraction" | "break" | "meeting";
 export type StopStatus = "done" | "paused" | "blocked";
 export type Source = "live" | "backfill";
@@ -14,6 +13,7 @@ export type EventType =
   | "task.started"
   | "task.stopped"
   | "task.updated"
+  | "task.archived"
   | "note"
   | "project.renamed"
   | "period.opened"
@@ -30,8 +30,8 @@ export type TaskCreated = Base & {
   type: "task.created";
   task: string; // slug id
   title: string;
-  importance: Score; // 1–5, value/impact
-  urgency?: Score; // 1–5, time pressure; defaults to 3 when omitted
+  important: boolean; // value/impact
+  urgent?: boolean; // time pressure; defaults to false when omitted
   tags: string[];
   project?: string;
   estMin?: number;
@@ -61,8 +61,8 @@ export type TaskUpdated = Base & {
   type: "task.updated";
   task: string;
   title?: string;
-  importance?: Score;
-  urgency?: Score;
+  important?: boolean;
+  urgent?: boolean;
   tags?: string[];
   project?: string | null;
   estMin?: number | null;
@@ -77,6 +77,15 @@ export type ProjectRenamed = Base & {
   type: "project.renamed";
   from: string;
   to: string;
+};
+
+// Soft-remove a task you won't do (append-only: the history stays in the log).
+// `archived: false` restores it. Replay hides archived tasks from every view.
+export type TaskArchived = Base & {
+  type: "task.archived";
+  task: string;
+  archived: boolean;
+  reason?: string;
 };
 
 export type NoteEvent = Base & {
@@ -104,6 +113,7 @@ export type Event =
   | TaskStarted
   | TaskStopped
   | TaskUpdated
+  | TaskArchived
   | ProjectRenamed
   | NoteEvent
   | PeriodOpened
@@ -121,8 +131,8 @@ export type TaskStatus = "todo" | "doing" | "paused" | "blocked" | "done";
 export interface Task {
   id: string;
   title: string;
-  importance: Score; // 1–5
-  urgency: Score; // 1–5
+  important: boolean;
+  urgent: boolean;
   tags: string[];
   project?: string;
   estMin?: number;
@@ -131,6 +141,7 @@ export interface Task {
   period?: string;
   spans: Span[];
   status: TaskStatus;
+  archived: boolean;
   createdAt: string;
 }
 

@@ -1,20 +1,19 @@
 import { DateTime } from "luxon";
-import type { Projection, Task, Score } from "../types.js";
+import type { Projection, Task } from "../types.js";
 import type { Config } from "./config.js";
 import { collectIntervals, unionMinutes, taskGrossMin } from "./replay.js";
 import { formatMin } from "./time.js";
 
 const COLS = ["todo", "doing", "paused", "blocked", "done"] as const;
 
-// A task counts as "important"/"urgent" once its 1–5 score reaches this bar —
-// the split that maps the two axes onto Eisenhower quadrants.
-const HI = 4;
+/** The A/B/C/D category letter for a task's quadrant. */
+export const CATEGORY: Record<string, string> = { Q1: "A", Q2: "B", Q3: "C", Q4: "D" };
 
 export interface BoardItem {
   id: string;
   title: string;
-  importance: Score;
-  urgency: Score;
+  important: boolean;
+  urgent: boolean;
   project?: string;
 }
 
@@ -28,8 +27,9 @@ export function board(p: Projection, project?: string): Record<string, BoardItem
   };
   for (const id of p.order) {
     const t = p.tasks.get(id)!;
+    if (t.archived) continue;
     if (project && t.project !== project) continue;
-    cols[t.status].push({ id: t.id, title: t.title, importance: t.importance, urgency: t.urgency, project: t.project });
+    cols[t.status].push({ id: t.id, title: t.title, important: t.important, urgent: t.urgent, project: t.project });
   }
   return cols;
 }
@@ -41,7 +41,8 @@ export function boardText(p: Projection, project?: string): string {
     const items = cols[c];
     lines.push(`${c.toUpperCase()} (${items.length})`);
     for (const it of items) {
-      lines.push(`  • ${it.id} — ${it.title}${it.project ? ` [${it.project}]` : ""} (i${it.importance}/u${it.urgency})`);
+      const cat = CATEGORY[quadrant(p.tasks.get(it.id)!)];
+      lines.push(`  • ${it.id} — ${it.title}${it.project ? ` [${it.project}]` : ""} (${cat})`);
     }
   }
   return lines.join("\n");
@@ -82,13 +83,11 @@ export function windowFor(kind: WindowKind, p: Projection, nowISO: string, confi
   return { start: now.startOf("week").toMillis(), end: now.toMillis(), label: "this week (no open sprint)" };
 }
 
-/** Eisenhower quadrant from the two 1–5 scores (important/urgent ≥ HI). */
+/** Eisenhower quadrant from the two yes/no axes. */
 export function quadrant(t: Task): "Q1" | "Q2" | "Q3" | "Q4" {
-  const imp = t.importance >= HI;
-  const urg = t.urgency >= HI;
-  if (imp && urg) return "Q1";
-  if (imp && !urg) return "Q2";
-  if (!imp && urg) return "Q3";
+  if (t.important && t.urgent) return "Q1";
+  if (t.important && !t.urgent) return "Q2";
+  if (!t.important && t.urgent) return "Q3";
   return "Q4";
 }
 
@@ -132,14 +131,16 @@ export interface ReportData {
 export function report(p: Projection, config: Config, nowISO: string, opts: ReportOpts): ReportData {
   const win = windowFor(opts.window, p, nowISO, config);
 
+  const live = [...p.tasks.values()].filter((t) => !t.archived);
   const inWin: { t: Task; gross: number }[] = [];
   for (const id of p.order) {
     const t = p.tasks.get(id)!;
+    if (t.archived) continue;
     const g = grossInWindow(t, nowISO, win);
     if (g > 0) inWin.push({ t, gross: g });
   }
   const grossMin = inWin.reduce((a, b) => a + b.gross, 0);
-  const netMin = unionMinutes(collectIntervals(p.tasks.values(), nowISO, win.start, win.end));
+  const netMin = unionMinutes(collectIntervals(live, nowISO, win.start, win.end));
   const multitaskFactor = netMin > 0 ? grossMin / netMin : 0;
   const interruptions = p.interruptionsAt.filter((a) => {
     const m = Date.parse(a);
@@ -169,7 +170,7 @@ export function report(p: Projection, config: Config, nowISO: string, opts: Repo
   if (opts.window === "sprint" && open) {
     let remaining = 0;
     for (const t of p.tasks.values()) {
-      if (t.period === open.id && t.status !== "done" && t.estMin) remaining += t.estMin;
+      if (!t.archived && t.period === open.id && t.status !== "done" && t.estMin) remaining += t.estMin;
     }
     if (opts.addingMin) remaining += opts.addingMin;
     const capMin =

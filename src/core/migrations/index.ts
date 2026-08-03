@@ -33,5 +33,6 @@ import type { Migration } from "./types.js";
  * so a user two versions behind runs both steps in order.
  */
 import m002 from "./002-imp-to-scores.js";
+import m003 from "./003-scores-to-flags.js";
 
-export const MIGRATIONS: Migration[] = [m002];
+export const MIGRATIONS: Migration[] = [m002, m003];

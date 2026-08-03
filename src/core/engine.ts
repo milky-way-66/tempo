@@ -20,7 +20,6 @@ import { check as runCheck } from "./check.js";
 import { newId, slugify } from "./ids.js";
 import type {
   Event,
-  Score,
   Reason,
   StopStatus,
   Projection,
@@ -30,22 +29,14 @@ import type {
 
 export interface CreateFields {
   title?: string;
-  importance?: number; // 1–5; validated by clampScore
-  urgency?: number; // 1–5; validated by clampScore
+  important?: boolean;
+  urgent?: boolean;
   tags?: string[];
   project?: string;
   est?: string;
   deadline?: string;
   parent?: string;
   period?: string;
-}
-
-/** Coerce a 1–5 priority score, rejecting out-of-range or non-integer input. */
-function clampScore(n: number, field: string): Score {
-  if (!Number.isInteger(n) || n < 1 || n > 5) {
-    throw new Error(`${field} must be an integer 1–5, got ${n}`);
-  }
-  return n as Score;
 }
 
 const DISAMBIG = (candidates: { id: string; title: string }[]) => ({
@@ -125,17 +116,15 @@ export class Engine {
 
   private create(f: CreateFields, at?: string): string {
     if (!f.title) throw new Error("a title is required to create a task");
-    if (f.importance === undefined) throw new Error("importance (1–5) is required at creation");
-    const importance = clampScore(f.importance, "importance");
-    const urgency = f.urgency === undefined ? undefined : clampScore(f.urgency, "urgency");
+    if (f.important === undefined) throw new Error("important (yes/no) is required at creation");
     const slug = slugify(f.title, new Set(this.projection.tasks.keys()));
     const ev: TaskCreated = {
       ...this.envelope(at),
       type: "task.created",
       task: slug,
       title: f.title,
-      importance,
-      urgency,
+      important: f.important,
+      urgent: f.urgent ?? false,
       tags: f.tags ?? [],
       project: f.project,
       estMin: f.est ? parseDurationMin(f.est) : undefined,
@@ -298,8 +287,8 @@ export class Engine {
     const patch: Partial<Omit<TaskUpdated, "type" | "task" | "id" | "at" | "logged_at" | "source">> = {};
     const changed: string[] = [];
     if (args.title !== undefined) (patch.title = args.title), changed.push("title");
-    if (args.importance !== undefined) (patch.importance = clampScore(args.importance, "importance")), changed.push("importance");
-    if (args.urgency !== undefined) (patch.urgency = clampScore(args.urgency, "urgency")), changed.push("urgency");
+    if (args.important !== undefined) (patch.important = args.important), changed.push("important");
+    if (args.urgent !== undefined) (patch.urgent = args.urgent), changed.push("urgent");
     if (args.tags !== undefined) (patch.tags = args.tags), changed.push("tags");
     if (args.project !== undefined) (patch.project = args.project), changed.push("project");
     if (args.est !== undefined) (patch.estMin = parseDurationMin(args.est)), changed.push("est");
@@ -331,6 +320,19 @@ export class Engine {
     if (changed.length === 0) return { error: "nothing to change; pass a field to set, or `clear` to unset" };
     this.write({ ...this.envelope(args.at), type: "task.updated", task, ...patch });
     return { task, changed };
+  }
+
+  archive(args: { query: string; restore?: boolean; reason?: string; at?: string }) {
+    const archived = !args.restore;
+    const r = resolve(this.projection, args.query, { includeDone: true, includeArchived: !!args.restore });
+    if (r.kind === "ambiguous") return DISAMBIG(r.candidates);
+    if (r.kind === "none") return { error: `no ${args.restore ? "archived " : ""}task matching "${args.query}"` };
+    const task = r.id;
+    if (this.projection.tasks.get(task)!.archived === archived) {
+      return { task, archived, noop: true };
+    }
+    this.write({ ...this.envelope(args.at), type: "task.archived", task, archived, reason: args.reason });
+    return { task, archived };
   }
 
   rename(args: { project: string; to: string; at?: string }) {

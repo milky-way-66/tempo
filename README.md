@@ -48,12 +48,12 @@ so you can verify before deleting it.
 
 | You say | What happens |
 |---|---|
-| "starting the auth bug, ~2h, importance 5" | creates + starts `auth-bug` (est 2h, importance 5, tag bug) |
+| "starting the auth bug, ~2h, important and urgent" | creates + starts `auth-bug` (est 2h, important, urgent, tag bug) |
 | "boss pulled me onto a hotfix, urgent" | pauses the current task, starts `hotfix` as an interruption |
 | "also picking up the docs" | starts `docs` alongside — multitasking |
 | "done" | closes the task with an est-vs-actual verdict |
 | "had a 1h standup at 9" | backfills a finished 1h meeting span |
-| "bump the auth bug to urgency 5" | edits the task's priority in place |
+| "mark the auth bug urgent" | edits the task's priority in place |
 | "rename project `dosc` to `docs`" | renames a mistyped project across every task |
 | "plan a 2-week sprint from Monday" | opens a period; add tasks with estimates under it |
 | "how's the sprint?" | on-track verdict: remaining estimate vs capacity |
@@ -62,17 +62,20 @@ so you can verify before deleting it.
 
 ## Priority
 
-Every task carries two independent **1–5 scores**: `importance` (value/impact, required) and `urgency`
-(time pressure, defaults to 3). Together they place the task on the Eisenhower matrix — **A** do-first
-(both high), **B** schedule (important, not urgent — the valuable work), **C** delegate (urgent only),
-**D** eliminate (neither) — which drives the board's priority map and time-mix metrics.
+Every task carries two independent **yes/no flags**: `important` (value/impact, required) and `urgent`
+(time pressure, defaults to no). Together they set the Eisenhower **category** — **A** do-first (both),
+**B** schedule (important, not urgent — the valuable work), **C** delegate (urgent only), **D**
+eliminate (neither) — which drives the board's priority map and the "time by category" metric that
+shows where your time actually goes.
 
 ## Tools
 
-`add` · `start` · `stop` · `note` · `log` · `edit` · `rename` · `period` · `board` · `report` · `check`
+`add` · `start` · `stop` · `note` · `log` · `edit` · `archive` · `rename` · `period` · `board` · `report` · `check`
 
-- **`edit`** — change any field of an existing task (title, importance/urgency, estimate, deadline,
+- **`edit`** — change any field of an existing task (title, important/urgent, estimate, deadline,
   parent, project, tags); `clear` unsets optional fields. Re-renders the board live.
+- **`archive`** — soft-remove a task you won't do (hidden from the board, kept in the log); `restore:true`
+  brings it back. Append-only, like every mutation.
 - **`rename`** — bulk-rename a project across every task that carries it.
 
 CLI subcommands: `tempo init` · `tempo migrate` · `tempo check` · `tempo mcp`.
@@ -86,15 +89,16 @@ order and duplicates never corrupt the numbers.
 
 Two board files (at the repo root, beside `.tempo/`) are **regenerated after every logged change**:
 
-- **`board.html`** — the visual board (Clean-Minimalism theme): an interactive importance × urgency
-  **scatter** (ECharts via CDN — hover for details, drag to zoom), a colour-coded kanban with A–D
-  class, scores, progress meters and deadline warnings, a project rollup, and the 3-week WBS tree with
-  weekly-load sparklines. Open it in a browser. _(Loads ECharts from a CDN, so it needs a connection
-  to render the chart.)_
+- **`board.html`** — the visual board (Clean-Minimalism theme, ECharts via CDN): a colour-coded kanban
+  (A–D category, flags, progress, deadline warnings), a project rollup, a **Work Breakdown calendar**
+  (Gantt — planned timespans from estimates + logged work, one column per day, 2-week default view), a
+  metrics panel, an **important × urgent** quadrant map (axes crossing at centre), a **time-by-category**
+  breakdown, and a sprint plan. Open it in a browser. _(Loads ECharts from a CDN, so it needs a
+  connection to render the charts.)_
 - **`agent-board.md`** — a **text-only** companion for agents/git/diff: tasks by status, a work-
   breakdown outline with subtree rollups, a described schedule (active now, worked this week, overdue,
-  upcoming deadlines), and prose time & priority metrics (project split, value-vs-firefighting mix,
-  per-axis splits, estimate-vs-actual). No charts or diagrams — Claude reads it directly.
+  upcoming deadlines), and prose time & priority metrics (project split, category mix, time-by-category,
+  estimate-vs-actual). No charts or diagrams — Claude reads it directly.
 
 `.tempo/version` records the on-disk store format version. `tempo migrate` upgrades an older store to
 the current version, reporting each step; `tempo check` prints the current `storeVersion`. Override

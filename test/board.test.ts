@@ -27,7 +27,7 @@ describe("board files", () => {
     const paths = tmpStore();
     const e = new Engine(paths);
 
-    e.add({ title: "Auth bug", importance: 5, urgency: 5, project: "api", deadline: "2026-08-10" });
+    e.add({ title: "Auth bug", important: true, urgent: true, project: "api", deadline: "2026-08-10" });
     expect(existsSync(agentFile(paths))).toBe(true);
     expect(existsSync(htmlFile(paths))).toBe(true);
     expect(existsSync(join(dirname(paths.home), "board.md"))).toBe(false); // no legacy file
@@ -48,7 +48,7 @@ describe("board files", () => {
   it("reflects status transitions in the agent board", () => {
     const paths = tmpStore();
     const e = new Engine(paths);
-    e.add({ title: "Auth bug", importance: 5 });
+    e.add({ title: "Auth bug", important: true });
     e.start({ query: "auth" });
     expect(readFileSync(agentFile(paths), "utf8")).toContain("### Doing (1)");
     e.stop({ query: "auth" });
@@ -58,7 +58,7 @@ describe("board files", () => {
   it("agent board is text-only — no charts, mermaid, or unicode bars", () => {
     const paths = tmpStore();
     const e = new Engine(paths);
-    e.add({ title: "T", importance: 3, est: "2h" });
+    e.add({ title: "T", important: false, est: "2h" });
     const md = readFileSync(agentFile(paths), "utf8");
     expect(md).not.toContain("```mermaid");
     expect(md).not.toMatch(/[█░▁▂▃▄▅▆▇]/); // no bar/sparkline glyphs
@@ -67,7 +67,7 @@ describe("board files", () => {
   it("puts a backdated start (timed before its create) in Doing", () => {
     const paths = tmpStore();
     const e = new Engine(paths);
-    e.add({ title: "Fix data source page bug", importance: 5, project: "api" });
+    e.add({ title: "Fix data source page bug", important: true, project: "api" });
     e.start({ query: "fix-data", at: "2020-01-01T09:00:00Z" });
 
     const cols = e.board().columns;
@@ -81,7 +81,7 @@ describe("board files", () => {
   it("re-renders on an idempotent start (already active)", () => {
     const paths = tmpStore();
     const e = new Engine(paths);
-    e.add({ title: "T", importance: 3 });
+    e.add({ title: "T", important: false });
     e.start({ query: "t" });
     rmSync(agentFile(paths));
     const r = e.start({ query: "t" }) as { alreadyActive?: boolean };
@@ -94,8 +94,8 @@ describe("board — WBS hierarchy & rollup", () => {
   it("nests children under their parent in the Work breakdown outline", () => {
     const paths = tmpStore();
     const e = new Engine(paths);
-    e.add({ title: "Create project workflow", importance: 5, project: "api", est: "8h" });
-    e.add({ title: "Create onboarding workflow", importance: 3, est: "3h", parent: "create-project-workflow" });
+    e.add({ title: "Create project workflow", important: true, project: "api", est: "8h" });
+    e.add({ title: "Create onboarding workflow", important: false, est: "3h", parent: "create-project-workflow" });
 
     const md = readFileSync(agentFile(paths), "utf8");
     expect(md).toContain("## Work breakdown");
@@ -114,8 +114,8 @@ describe("board.html — visual", () => {
   it("plots an SVG scatter dot per open task", () => {
     const config = ConfigSchema.parse({ timezone: "UTC" });
     const p = replay([
-      { id: "c1", at: "2026-08-03T09:00:00Z", logged_at: "2026-08-03T09:00:00Z", source: "live", type: "task.created", task: "ship", title: "Ship", importance: 5, urgency: 5, tags: [] },
-      { id: "c2", at: "2026-08-03T09:00:00Z", logged_at: "2026-08-03T09:00:00Z", source: "live", type: "task.created", task: "tidy", title: "Tidy", importance: 2, urgency: 1, tags: [] },
+      { id: "c1", at: "2026-08-03T09:00:00Z", logged_at: "2026-08-03T09:00:00Z", source: "live", type: "task.created", task: "ship", title: "Ship", important: true, urgent: true, tags: [] },
+      { id: "c2", at: "2026-08-03T09:00:00Z", logged_at: "2026-08-03T09:00:00Z", source: "live", type: "task.created", task: "tidy", title: "Tidy", important: false, urgent: false, tags: [] },
     ] as unknown as Event[]);
     const html = boardHtml(p, config, "2026-08-03T10:00:00Z");
     expect(html).toContain("Priority map");
@@ -135,10 +135,10 @@ describe("agent board — time & priority", () => {
     ({ logged_at: o.at, source: "live", ...o }) as Event;
 
   const events: Event[] = [
-    ev({ id: "c1", at: "2026-08-05T09:00:00Z", type: "task.created", task: "api-work", title: "API work", importance: 5, tags: [], project: "api", estMin: 120 } as never),
+    ev({ id: "c1", at: "2026-08-05T09:00:00Z", type: "task.created", task: "api-work", title: "API work", important: true, tags: [], project: "api", estMin: 120 } as never),
     ev({ id: "s1", at: "2026-08-05T09:00:00Z", type: "task.started", task: "api-work" } as never),
     ev({ id: "e1", at: "2026-08-05T11:00:00Z", type: "task.stopped", task: "api-work", status: "done" } as never),
-    ev({ id: "c2", at: "2026-08-05T13:00:00Z", type: "task.created", task: "docs", title: "Docs", importance: 1, tags: [], project: "docs" } as never),
+    ev({ id: "c2", at: "2026-08-05T13:00:00Z", type: "task.created", task: "docs", title: "Docs", important: false, tags: [], project: "docs" } as never),
     ev({ id: "s2", at: "2026-08-05T13:00:00Z", type: "task.started", task: "docs" } as never),
     ev({ id: "e2", at: "2026-08-05T14:00:00Z", type: "task.stopped", task: "docs", status: "done" } as never),
   ];
@@ -150,7 +150,7 @@ describe("agent board — time & priority", () => {
     expect(md).toContain("api");
     expect(md).toContain("docs");
     expect(md).toContain("Priority mix:");
-    expect(md).toContain("By importance:");
+    expect(md).toContain("By category:");
     expect(md).toContain("Estimates vs actual:");
     expect(md).toContain("api-work");
   });

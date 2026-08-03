@@ -14,10 +14,11 @@ const RANK: Record<Event["type"], number> = {
   // Metadata edits carry no span math, so their rank only breaks same-instant
   // ties deterministically; a later edit (by at, then logged_at) wins.
   "task.updated": 3,
-  note: 4,
-  "project.renamed": 5,
-  "period.opened": 6,
-  "period.closed": 7,
+  "task.archived": 4,
+  note: 5,
+  "project.renamed": 6,
+  "period.opened": 7,
+  "period.closed": 8,
 };
 
 function cmp(a: Event, b: Event): number {
@@ -46,8 +47,8 @@ export function replay(input: Event[]): Projection {
     tasks.set(e.task, {
       id: e.task,
       title: e.title,
-      importance: e.importance ?? 3,
-      urgency: e.urgency ?? 3,
+      important: e.important ?? false,
+      urgent: e.urgent ?? false,
       tags: e.tags ?? [],
       project: e.project,
       estMin: e.estMin,
@@ -56,6 +57,7 @@ export function replay(input: Event[]): Projection {
       period: e.period,
       spans: [],
       status: "todo",
+      archived: false,
       createdAt: e.at,
     });
     order.push(e.task);
@@ -87,14 +89,19 @@ export function replay(input: Event[]): Projection {
         const t = tasks.get(e.task);
         if (!t) break; // update for a never-created task — check() flags this
         if (e.title !== undefined) t.title = e.title;
-        if (e.importance !== undefined) t.importance = e.importance;
-        if (e.urgency !== undefined) t.urgency = e.urgency;
+        if (e.important !== undefined) t.important = e.important;
+        if (e.urgent !== undefined) t.urgent = e.urgent;
         if (e.tags !== undefined) t.tags = e.tags;
         if (e.project !== undefined) t.project = e.project ?? undefined;
         if (e.estMin !== undefined) t.estMin = e.estMin ?? undefined;
         if (e.deadline !== undefined) t.deadline = e.deadline ?? undefined;
         if (e.parent !== undefined) t.parent = e.parent ?? undefined;
         if (e.period !== undefined) t.period = e.period ?? undefined;
+        break;
+      }
+      case "task.archived": {
+        const t = tasks.get(e.task);
+        if (t) t.archived = e.archived;
         break;
       }
       case "project.renamed": {

@@ -23,7 +23,7 @@ const NOW = "2026-08-03T23:59:00+07:00";
 describe("replay — spans & status", () => {
   it("computes one span and a finished status", () => {
     const log: Event[] = [
-      ev({ type: "task.created", at: "2026-08-03T09:00:00+07:00", task: "auth", title: "Auth", importance: 5, tags: ["bug"] }),
+      ev({ type: "task.created", at: "2026-08-03T09:00:00+07:00", task: "auth", title: "Auth", important: true, tags: ["bug"] }),
       ev({ type: "task.started", at: "2026-08-03T09:00:00+07:00", task: "auth" }),
       ev({ type: "task.stopped", at: "2026-08-03T10:30:00+07:00", task: "auth", status: "done" }),
     ];
@@ -35,7 +35,7 @@ describe("replay — spans & status", () => {
 
   it("sums many spans across interruptions", () => {
     const log: Event[] = [
-      ev({ type: "task.created", at: "2026-08-03T09:00:00+07:00", task: "a", title: "A", importance: 3, tags: [] }),
+      ev({ type: "task.created", at: "2026-08-03T09:00:00+07:00", task: "a", title: "A", important: false, tags: [] }),
       ev({ type: "task.started", at: "2026-08-03T09:00:00+07:00", task: "a" }),
       ev({ type: "task.stopped", at: "2026-08-03T10:00:00+07:00", task: "a", status: "paused" }),
       ev({ type: "task.started", at: "2026-08-03T11:00:00+07:00", task: "a" }),
@@ -50,7 +50,7 @@ describe("replay — spans & status", () => {
 describe("replay — determinism", () => {
   it("is order-independent (shuffled log ⇒ same gross)", () => {
     const log: Event[] = [
-      ev({ type: "task.created", at: "2026-08-03T09:00:00+07:00", task: "a", title: "A", importance: 3, tags: [] }),
+      ev({ type: "task.created", at: "2026-08-03T09:00:00+07:00", task: "a", title: "A", important: false, tags: [] }),
       ev({ type: "task.started", at: "2026-08-03T09:00:00+07:00", task: "a" }),
       ev({ type: "task.stopped", at: "2026-08-03T10:00:00+07:00", task: "a", status: "paused" }),
       ev({ type: "task.started", at: "2026-08-03T11:00:00+07:00", task: "a" }),
@@ -64,7 +64,7 @@ describe("replay — determinism", () => {
   });
 
   it("drops duplicate ids (merge safety)", () => {
-    const created = ev({ type: "task.created", at: "2026-08-03T09:00:00+07:00", task: "a", title: "A", importance: 3, tags: [] });
+    const created = ev({ type: "task.created", at: "2026-08-03T09:00:00+07:00", task: "a", title: "A", important: false, tags: [] });
     const p = replay([created, created]);
     expect(p.tasks.size).toBe(1);
   });
@@ -73,8 +73,8 @@ describe("replay — determinism", () => {
 describe("replay — multitasking gross vs net", () => {
   it("counts gross per task but net once", () => {
     const log: Event[] = [
-      ev({ type: "task.created", at: "2026-08-03T09:00:00+07:00", task: "a", title: "A", importance: 3, tags: [] }),
-      ev({ type: "task.created", at: "2026-08-03T09:00:00+07:00", task: "b", title: "B", importance: 3, tags: [] }),
+      ev({ type: "task.created", at: "2026-08-03T09:00:00+07:00", task: "a", title: "A", important: false, tags: [] }),
+      ev({ type: "task.created", at: "2026-08-03T09:00:00+07:00", task: "b", title: "B", important: false, tags: [] }),
       ev({ type: "task.started", at: "2026-08-03T09:00:00+07:00", task: "a" }),
       ev({ type: "task.started", at: "2026-08-03T09:30:00+07:00", task: "b", reason: "urgent" }),
       ev({ type: "task.stopped", at: "2026-08-03T10:00:00+07:00", task: "a", status: "done" }),

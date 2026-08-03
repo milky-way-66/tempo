@@ -121,8 +121,8 @@ describe("upgradeStore", () => {
   });
 });
 
-describe("002 imp → scores (real migration)", () => {
-  it("maps imp levels to importance and drops imp; urgency defaults on replay", async () => {
+describe("real migration chain v1 → v3 (imp → scores → flags)", () => {
+  it("maps legacy imp all the way to yes/no important/urgent flags", async () => {
     const { MIGRATIONS } = await import("../src/core/migrations/index");
     const { replay } = await import("../src/core/replay");
     const paths = tmpStore();
@@ -131,16 +131,18 @@ describe("002 imp → scores (real migration)", () => {
       { id: "c2", at: "2026-08-03T09:00:00Z", logged_at: "2026-08-03T09:00:00Z", source: "live", type: "task.created", task: "b", title: "B", imp: "low", tags: [] },
       { id: "u1", at: "2026-08-03T10:00:00Z", logged_at: "2026-08-03T10:00:00Z", source: "live", type: "task.updated", task: "b", imp: "med" },
     ]);
-    const r = upgradeStore(paths, { migrations: MIGRATIONS, target: 2, backup: false });
-    expect(r.to).toBe(2);
+    // v1 → v2 (imp→importance 5/3/1) → v3 (importance≥4 → important flag)
+    const r = upgradeStore(paths, { migrations: MIGRATIONS, target: 3, backup: false });
+    expect(r.to).toBe(3);
 
     const raw = readFileSync(paths.eventsFile, "utf8");
     expect(raw).not.toContain('"imp"');
-    expect(raw).toContain('"importance":5');
+    expect(raw).not.toContain('"importance"');
+    expect(raw).toContain('"important":true');
 
     const p = replay(JSON.parse("[" + raw.trim().split("\n").join(",") + "]"));
-    expect(p.tasks.get("a")!.importance).toBe(5);
-    expect(p.tasks.get("a")!.urgency).toBe(3); // defaulted
-    expect(p.tasks.get("b")!.importance).toBe(3); // low(1) at create, then updated to med(3)
+    expect(p.tasks.get("a")!.important).toBe(true); // high(5) ≥ 4
+    expect(p.tasks.get("a")!.urgent).toBe(false); // defaulted, no urgency
+    expect(p.tasks.get("b")!.important).toBe(false); // low(1)→med(3), still < 4
   });
 });

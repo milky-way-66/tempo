@@ -2,7 +2,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { Engine } from "./core/engine.js";
 
-const score = z.number().int().min(1).max(5);
 const reason = z.enum(["urgent", "blocked", "distraction", "break", "meeting"]);
 const stopStatus = z.enum(["done", "paused", "blocked"]);
 const energy = z.enum(["hard", "easy"]);
@@ -30,11 +29,11 @@ export function buildServer(engine: Engine): McpServer {
 
   server.tool(
     "add",
-    "Define a task without starting it (planning / WBS). importance (1–5) is required; urgency (1–5) defaults to 3. A task is any unit of work — coding, meeting, review — categorized by tags.",
+    "Define a task without starting it (planning / WBS). important (yes/no) is required; urgent (yes/no) defaults to false. Together they set the Eisenhower category (A both · B important · C urgent · D neither). A task is any unit of work — coding, meeting, review — categorized by tags.",
     {
       title: z.string(),
-      importance: score.describe("value/impact, 1–5 (5 = highest)"),
-      urgency: score.optional().describe("time pressure, 1–5 (default 3)"),
+      important: z.boolean().describe("high value/impact?"),
+      urgent: z.boolean().optional().describe("time-pressured? (default false)"),
       tags: z.array(z.string()).optional(),
       project: z.string().optional(),
       est: z.string().optional().describe('estimate, e.g. "2h", "90m"'),
@@ -52,8 +51,8 @@ export function buildServer(engine: Engine): McpServer {
     {
       query: z.string().optional().describe("phrase to resolve an existing task"),
       title: z.string().optional().describe("title for a new task"),
-      importance: score.optional().describe("value/impact, 1–5 (required if creating)"),
-      urgency: score.optional().describe("time pressure, 1–5 (default 3)"),
+      important: z.boolean().optional().describe("high value/impact? (required if creating)"),
+      urgent: z.boolean().optional().describe("time-pressured? (default false)"),
       tags: z.array(z.string()).optional(),
       project: z.string().optional(),
       est: z.string().optional(),
@@ -97,8 +96,8 @@ export function buildServer(engine: Engine): McpServer {
       at: z.string().describe("when it started, e.g. \"yesterday 14:00\""),
       title: z.string().optional(),
       query: z.string().optional(),
-      importance: score.optional().describe("value/impact, 1–5 (required if creating)"),
-      urgency: score.optional().describe("time pressure, 1–5 (default 3)"),
+      important: z.boolean().optional().describe("high value/impact? (required if creating)"),
+      urgent: z.boolean().optional().describe("time-pressured? (default false)"),
       tags: z.array(z.string()).optional(),
       project: z.string().optional(),
     },
@@ -128,12 +127,12 @@ export function buildServer(engine: Engine): McpServer {
 
   server.tool(
     "edit",
-    "Edit an existing task's fields: rename its title, or change importance/urgency (1–5)/estimate/deadline/parent/project/tags. Pass only the fields that change; use clear to unset optional fields. Re-renders the board live. For renaming a project across many tasks, use rename instead.",
+    "Edit an existing task's fields: rename its title, or change important/urgent (yes/no)/estimate/deadline/parent/project/tags. Pass only the fields that change; use clear to unset optional fields. Re-renders the board live. For renaming a project across many tasks, use rename instead.",
     {
       query: z.string().describe("phrase to resolve the task to edit"),
       title: z.string().optional(),
-      importance: score.optional().describe("value/impact, 1–5"),
-      urgency: score.optional().describe("time pressure, 1–5"),
+      important: z.boolean().optional().describe("high value/impact?"),
+      urgent: z.boolean().optional().describe("time-pressured?"),
       tags: z.array(z.string()).optional(),
       project: z.string().optional(),
       est: z.string().optional().describe('estimate, e.g. "2h", "90m"'),
@@ -147,6 +146,18 @@ export function buildServer(engine: Engine): McpServer {
       at: z.string().optional(),
     },
     async (a) => run(() => engine.edit(a)),
+  );
+
+  server.tool(
+    "archive",
+    "Archive a task you won't do (soft-remove: it's hidden from the board but kept in the log). Set restore:true to bring an archived task back. Append-only — nothing is deleted.",
+    {
+      query: z.string().describe("phrase to resolve the task"),
+      restore: z.boolean().optional().describe("un-archive instead of archive"),
+      reason: z.string().optional(),
+      at: z.string().optional(),
+    },
+    async (a) => run(() => engine.archive(a)),
   );
 
   server.tool(
