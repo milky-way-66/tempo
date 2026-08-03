@@ -10,3 +10,9 @@
 
 # Secrets
 .env
+
+# Node / build
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
