@@ -4,8 +4,8 @@ A personal, chat-driven work tracker. You **narrate your work to Claude Code**; 
 an append-only event log and derives your board, time, estimates, and plans. No timer, no forms —
 just talk. Runs as a local [MCP](https://modelcontextprotocol.io) server.
 
-- **One store for all your work** — `~/.tempo/` (git-backed). `project` is a field on a task, not a
-  separate log.
+- **The store lives in your repo** — `.tempo/` inside the management repo you run it from, versioned
+  right alongside your work. `project` is a field on a task, not a separate log.
 - **A task is any unit of work** — coding, a meeting, an estimate, a review — categorized by tags.
 - **Multitasking is first-class** — many tasks can run at once; time is reported gross (per task)
   and net (real wall-clock).
@@ -14,12 +14,32 @@ just talk. Runs as a local [MCP](https://modelcontextprotocol.io) server.
 
 ## Install
 
+Run this from inside the git repo you want to track your work in (your "management repo"):
+
 ```bash
-npx @milkyway-666/tempo init                 # creates ~/.tempo (git repo + config + rituals)
-claude mcp add tempo -s user -- npx -y @milkyway-666/tempo mcp
+npx @milkyway-666/tempo init                 # creates ./.tempo (config + rituals) in this repo
+claude mcp add tempo -- npx -y @milkyway-666/tempo mcp
+git add .tempo && git commit -m "tempo: init"
 ```
 
-Then add `~/.tempo/assets/CLAUDE.md` to your Claude Code memory so the agent knows the rituals.
+`.tempo/` is plain tracked files inside your repo — Tempo never creates its own git repo and never
+commits for you; you commit and push `.tempo/` with your normal git workflow. The MCP server finds
+the store by walking up from its working directory (like `git` finds `.git`), so it works from any
+subfolder of the repo.
+
+Then add `.tempo/assets/CLAUDE.md` to your Claude Code memory so the agent knows the rituals.
+
+### Migrating from an older global store
+
+Earlier versions kept a single store at `~/.tempo`. To move it into your management repo, run from
+the repo root:
+
+```bash
+npx @milkyway-666/tempo migrate              # copies ~/.tempo → ./.tempo, then upgrades the format
+```
+
+It reports the store version and any format steps applied, and leaves the old `~/.tempo` untouched
+so you can verify before deleting it.
 
 ## Talk to it
 
@@ -39,12 +59,18 @@ Then add `~/.tempo/assets/CLAUDE.md` to your Claude Code memory so the agent kno
 
 `add` · `start` · `stop` · `note` · `log` · `period` · `board` · `report` · `check`
 
+CLI subcommands: `tempo init` · `tempo migrate` · `tempo check` · `tempo mcp`.
+
 ## Data
 
-Everything lives in `~/.tempo/events.jsonl` (one JSON event per line), committed to git after each
-change. `.gitattributes` sets `merge=union` so multiple machines merge cleanly; replay dedups by
-event id and sorts by time, so order and duplicates never corrupt the numbers. Override the location
-with `TEMPO_HOME`.
+Everything lives in `.tempo/events.jsonl` (one JSON event per line) inside your repo. Tempo appends
+to the log; **you** commit `.tempo/` whenever you commit your work. `.gitattributes` sets
+`merge=union` so multiple machines merge cleanly; replay dedups by event id and sorts by time, so
+order and duplicates never corrupt the numbers.
+
+`.tempo/version` records the on-disk store format version. `tempo migrate` upgrades an older store to
+the current version, reporting each step; `tempo check` prints the current `storeVersion`. Override
+the store location with `TEMPO_HOME`.
 
 ## Development
 

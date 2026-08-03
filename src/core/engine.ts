@@ -13,7 +13,6 @@ import {
   type WindowKind,
 } from "./report.js";
 import { check as runCheck } from "./check.js";
-import { commitAll } from "./git.js";
 import { newId, slugify } from "./ids.js";
 import type {
   Event,
@@ -64,8 +63,8 @@ export class Engine {
   private write(ev: Event): void {
     append(this.paths, ev);
     this.projection = replay(readAll(this.paths).events);
-    const label = "task" in ev ? ev.task : "period" in ev ? ev.period : "";
-    commitAll(this.paths, `${ev.type} ${label} @${ev.at}`.trim());
+    // The store lives inside the user's management repo; they commit `.tempo/`
+    // themselves, so Tempo does not auto-commit.
   }
 
   private envelope(at?: string): { id: string; at: string; logged_at: string; source: "live" | "backfill" } {

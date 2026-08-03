@@ -1,14 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, readFileSync, existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execFileSync } from "node:child_process";
 import { Engine } from "../src/core/engine";
-import { initRepo } from "../src/core/git";
+import { initStore } from "../src/core/git";
 import type { Paths } from "../src/core/config";
 
 function tmpPaths(): Paths {
-  const home = mkdtempSync(join(tmpdir(), "tempo-git-"));
+  const root = mkdtempSync(join(tmpdir(), "tempo-git-"));
+  const home = join(root, ".tempo");
   return {
     home,
     eventsFile: join(home, "events.jsonl"),
@@ -17,22 +17,25 @@ function tmpPaths(): Paths {
   };
 }
 
-describe("git integration", () => {
-  it("init creates a repo with a union-merge attribute", () => {
+describe("store", () => {
+  it("initStore creates the dir with a union-merge attribute and no nested repo", () => {
     const paths = tmpPaths();
-    initRepo(paths);
-    expect(existsSync(join(paths.home, ".git"))).toBe(true);
+    initStore(paths);
+    expect(existsSync(paths.home)).toBe(true);
+    expect(existsSync(join(paths.home, ".git"))).toBe(false);
     expect(readFileSync(paths.gitattributesFile, "utf8")).toContain("events.jsonl merge=union");
   });
 
-  it("commits on each write", () => {
+  it("writes events to events.jsonl without committing (the host repo owns commits)", () => {
     const paths = tmpPaths();
-    initRepo(paths);
+    initStore(paths);
     const e = new Engine(paths);
     e.add({ title: "A", imp: "med" });
     e.start({ query: "a" });
-    const log = execFileSync("git", ["log", "--oneline"], { cwd: paths.home }).toString();
+    const log = readFileSync(paths.eventsFile, "utf8");
     expect(log).toContain("task.created");
     expect(log).toContain("task.started");
+    // Tempo never creates its own git repo inside the store.
+    expect(readdirSync(paths.home)).not.toContain(".git");
   });
 });

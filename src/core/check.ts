@@ -29,10 +29,14 @@ const TYPES = new Set<Event["type"]>([
   "period.closed",
 ]);
 
+// Tiebreaker for events that share an `at` (second precision): a task must be
+// created, then started, then stopped. `started` MUST rank before `stopped` so
+// a create→start→stop within the same second reads as a valid span, not a stop
+// without an open span.
 const RANK: Record<string, number> = {
   "task.created": 0,
-  "task.stopped": 1,
-  "task.started": 2,
+  "task.started": 1,
+  "task.stopped": 2,
   note: 3,
   "period.opened": 4,
   "period.closed": 5,
