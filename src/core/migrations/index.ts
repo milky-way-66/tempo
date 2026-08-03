@@ -32,6 +32,6 @@ import type { Migration } from "./types.js";
  * Steps run sequentially from the user's current version up to STORE_VERSION,
  * so a user two versions behind runs both steps in order.
  */
-export const MIGRATIONS: Migration[] = [
-  // import m002 from "./002-rename-est-field.js"; then: m002,
-];
+import m002 from "./002-imp-to-scores.js";
+
+export const MIGRATIONS: Migration[] = [m002];

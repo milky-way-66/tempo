@@ -19,22 +19,32 @@ import { check as runCheck } from "./check.js";
 import { newId, slugify } from "./ids.js";
 import type {
   Event,
-  Importance,
+  Score,
   Reason,
   StopStatus,
   Projection,
   TaskCreated,
+  TaskUpdated,
 } from "../types.js";
 
 export interface CreateFields {
   title?: string;
-  imp?: Importance;
+  importance?: number; // 1–5; validated by clampScore
+  urgency?: number; // 1–5; validated by clampScore
   tags?: string[];
   project?: string;
   est?: string;
   deadline?: string;
   parent?: string;
   period?: string;
+}
+
+/** Coerce a 1–5 priority score, rejecting out-of-range or non-integer input. */
+function clampScore(n: number, field: string): Score {
+  if (!Number.isInteger(n) || n < 1 || n > 5) {
+    throw new Error(`${field} must be an integer 1–5, got ${n}`);
+  }
+  return n as Score;
 }
 
 const DISAMBIG = (candidates: { id: string; title: string }[]) => ({
@@ -99,14 +109,17 @@ export class Engine {
 
   private create(f: CreateFields, at?: string): string {
     if (!f.title) throw new Error("a title is required to create a task");
-    if (!f.imp) throw new Error("importance (imp) is required at creation");
+    if (f.importance === undefined) throw new Error("importance (1–5) is required at creation");
+    const importance = clampScore(f.importance, "importance");
+    const urgency = f.urgency === undefined ? undefined : clampScore(f.urgency, "urgency");
     const slug = slugify(f.title, new Set(this.projection.tasks.keys()));
     const ev: TaskCreated = {
       ...this.envelope(at),
       type: "task.created",
       task: slug,
       title: f.title,
-      imp: f.imp,
+      importance,
+      urgency,
       tags: f.tags ?? [],
       project: f.project,
       estMin: f.est ? parseDurationMin(f.est) : undefined,
@@ -243,6 +256,73 @@ export class Engine {
       capacityHoursPerDay: args.capacity,
     });
     return { period: name, start: startDate, end: endDate };
+  }
+
+  // ---- edit ----
+
+  /** Would setting `task`'s parent to `parentId` create a cycle? */
+  private wouldCycle(task: string, parentId: string): boolean {
+    let cur: string | undefined = parentId;
+    const seen = new Set<string>();
+    while (cur) {
+      if (cur === task) return true;
+      if (seen.has(cur)) break; // pre-existing cycle in the data; stop
+      seen.add(cur);
+      cur = this.projection.tasks.get(cur)?.parent;
+    }
+    return false;
+  }
+
+  edit(args: CreateFields & { query: string; clear?: string[]; at?: string }) {
+    const r = resolve(this.projection, args.query, { includeDone: true });
+    if (r.kind === "ambiguous") return DISAMBIG(r.candidates);
+    if (r.kind === "none") return { error: `no task matching "${args.query}"` };
+    const task = r.id;
+
+    const patch: Partial<Omit<TaskUpdated, "type" | "task" | "id" | "at" | "logged_at" | "source">> = {};
+    const changed: string[] = [];
+    if (args.title !== undefined) (patch.title = args.title), changed.push("title");
+    if (args.importance !== undefined) (patch.importance = clampScore(args.importance, "importance")), changed.push("importance");
+    if (args.urgency !== undefined) (patch.urgency = clampScore(args.urgency, "urgency")), changed.push("urgency");
+    if (args.tags !== undefined) (patch.tags = args.tags), changed.push("tags");
+    if (args.project !== undefined) (patch.project = args.project), changed.push("project");
+    if (args.est !== undefined) (patch.estMin = parseDurationMin(args.est)), changed.push("est");
+    if (args.deadline !== undefined) (patch.deadline = args.deadline), changed.push("deadline");
+    if (args.period !== undefined) (patch.period = args.period), changed.push("period");
+    if (args.parent !== undefined) {
+      const pr = resolve(this.projection, args.parent, { includeDone: true });
+      if (pr.kind === "ambiguous") return DISAMBIG(pr.candidates);
+      if (pr.kind === "none") return { error: `no parent task matching "${args.parent}"` };
+      if (pr.id === task) return { error: "a task cannot be its own parent" };
+      if (this.wouldCycle(task, pr.id)) return { error: `parent "${pr.id}" is a descendant of "${task}" (cycle)` };
+      (patch.parent = pr.id), changed.push("parent");
+    }
+
+    const CLEARABLE: Record<string, keyof typeof patch> = {
+      project: "project",
+      est: "estMin",
+      deadline: "deadline",
+      parent: "parent",
+      period: "period",
+    };
+    for (const f of args.clear ?? []) {
+      const key = CLEARABLE[f];
+      if (!key) return { error: `cannot clear "${f}"; clearable: ${Object.keys(CLEARABLE).join(", ")}` };
+      (patch[key] as unknown) = null;
+      changed.push(`-${f}`);
+    }
+
+    if (changed.length === 0) return { error: "nothing to change; pass a field to set, or `clear` to unset" };
+    this.write({ ...this.envelope(args.at), type: "task.updated", task, ...patch });
+    return { task, changed };
+  }
+
+  rename(args: { project: string; to: string; at?: string }) {
+    if (!args.project || !args.to) return { error: "rename needs a project and a new name (to)" };
+    const n = [...this.projection.tasks.values()].filter((t) => t.project === args.project).length;
+    if (n === 0) return { error: `no tasks under project "${args.project}"` };
+    this.write({ ...this.envelope(args.at), type: "project.renamed", from: args.project, to: args.to });
+    return { from: args.project, to: args.to, tasks: n };
   }
 
   // ---- views ----

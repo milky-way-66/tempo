@@ -48,19 +48,32 @@ so you can verify before deleting it.
 
 | You say | What happens |
 |---|---|
-| "starting the auth bug, ~2h, important" | creates + starts `auth-bug` (est 2h, imp high, tag bug) |
+| "starting the auth bug, ~2h, importance 5" | creates + starts `auth-bug` (est 2h, importance 5, tag bug) |
 | "boss pulled me onto a hotfix, urgent" | pauses the current task, starts `hotfix` as an interruption |
 | "also picking up the docs" | starts `docs` alongside — multitasking |
 | "done" | closes the task with an est-vs-actual verdict |
 | "had a 1h standup at 9" | backfills a finished 1h meeting span |
+| "bump the auth bug to urgency 5" | edits the task's priority in place |
+| "rename project `dosc` to `docs`" | renames a mistyped project across every task |
 | "plan a 2-week sprint from Monday" | opens a period; add tasks with estimates under it |
 | "how's the sprint?" | on-track verdict: remaining estimate vs capacity |
 | "what if I take a 3h urgent task?" | interruption what-if on the sprint |
 | "show my board" / "how was this week?" | board / weekly time distribution by project·tag·quadrant |
 
+## Priority
+
+Every task carries two independent **1–5 scores**: `importance` (value/impact, required) and `urgency`
+(time pressure, defaults to 3). Together they place the task on the Eisenhower matrix — **A** do-first
+(both high), **B** schedule (important, not urgent — the valuable work), **C** delegate (urgent only),
+**D** eliminate (neither) — which drives the board's priority map and time-mix metrics.
+
 ## Tools
 
-`add` · `start` · `stop` · `note` · `log` · `period` · `board` · `report` · `check`
+`add` · `start` · `stop` · `note` · `log` · `edit` · `rename` · `period` · `board` · `report` · `check`
+
+- **`edit`** — change any field of an existing task (title, importance/urgency, estimate, deadline,
+  parent, project, tags); `clear` unsets optional fields. Re-renders the board live.
+- **`rename`** — bulk-rename a project across every task that carries it.
 
 CLI subcommands: `tempo init` · `tempo migrate` · `tempo check` · `tempo mcp`.
 
@@ -72,11 +85,16 @@ to the log; **you** commit `.tempo/` whenever you commit your work. `.gitattribu
 order and duplicates never corrupt the numbers.
 
 `board.md` (at the repo root, beside `.tempo/`) is a live Markdown dashboard, **regenerated after
-every logged change** — open it in your editor to watch it update as you narrate your work. It holds a
-kanban of your tasks
-(To Do · Doing · Done) plus a metrics section: today/this-week time totals with multitask factor,
-time distribution by project and by Eisenhower quadrant (with bars), an open-sprint plan check, and
-estimate-vs-actual for finished tasks.
+every logged change** — open it in your editor to watch it update as you narrate your work. It holds:
+
+- a **kanban** (To Do · Doing · Done) where each card shows its A–D priority class, importance/urgency
+  scores, a progress meter, and a deadline warning (⏰ due ≤2d · ⚠️ overdue);
+- a **project rollup** — lifetime estimate vs logged vs remaining per project;
+- a **Work Breakdown** — the WBS tree (parent → child, indented) scoped to a rolling 3-week window
+  (last · this · next), each row carrying a weekly-load sparkline (time series) and rolled-up metrics;
+- a **metrics** section: today/this-week totals with multitask factor, time by project, the
+  value-vs-firefighting time mix, a Mermaid **priority map** (importance × urgency), per-axis time
+  splits, an open-sprint plan check, and estimate-vs-actual for finished tasks.
 
 `.tempo/version` records the on-disk store format version. `tempo migrate` upgrades an older store to
 the current version, reporting each step; `tempo check` prints the current `storeVersion`. Override

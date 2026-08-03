@@ -24,7 +24,9 @@ const TYPES = new Set<Event["type"]>([
   "task.created",
   "task.started",
   "task.stopped",
+  "task.updated",
   "note",
+  "project.renamed",
   "period.opened",
   "period.closed",
 ]);
@@ -90,6 +92,9 @@ export function check(read: ReadResult, projection: Projection, nowISO: string):
       if (!open.has(e.task))
         issues.push({ kind: "impossible", detail: "stop without an open span", task: e.task, at: e.at });
       open.delete(e.task);
+    } else if (e.type === "task.updated") {
+      if (!everCreated.has(e.task))
+        issues.push({ kind: "impossible", detail: "updated without a task.created", task: e.task, at: e.at });
     }
   }
 

@@ -30,7 +30,7 @@ describe("store", () => {
     const paths = tmpPaths();
     initStore(paths);
     const e = new Engine(paths);
-    e.add({ title: "A", imp: "med" });
+    e.add({ title: "A", importance: 3 });
     e.start({ query: "a" });
     const log = readFileSync(paths.eventsFile, "utf8");
     expect(log).toContain("task.created");

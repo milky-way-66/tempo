@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { Engine } from "./core/engine.js";
 
-const imp = z.enum(["high", "med", "low"]);
+const score = z.number().int().min(1).max(5);
 const reason = z.enum(["urgent", "blocked", "distraction", "break", "meeting"]);
 const stopStatus = z.enum(["done", "paused", "blocked"]);
 const energy = z.enum(["hard", "easy"]);
@@ -30,10 +30,11 @@ export function buildServer(engine: Engine): McpServer {
 
   server.tool(
     "add",
-    "Define a task without starting it (planning / WBS). Importance is required. A task is any unit of work — coding, meeting, review — categorized by tags.",
+    "Define a task without starting it (planning / WBS). importance (1–5) is required; urgency (1–5) defaults to 3. A task is any unit of work — coding, meeting, review — categorized by tags.",
     {
       title: z.string(),
-      imp,
+      importance: score.describe("value/impact, 1–5 (5 = highest)"),
+      urgency: score.optional().describe("time pressure, 1–5 (default 3)"),
       tags: z.array(z.string()).optional(),
       project: z.string().optional(),
       est: z.string().optional().describe('estimate, e.g. "2h", "90m"'),
@@ -51,7 +52,8 @@ export function buildServer(engine: Engine): McpServer {
     {
       query: z.string().optional().describe("phrase to resolve an existing task"),
       title: z.string().optional().describe("title for a new task"),
-      imp: imp.optional(),
+      importance: score.optional().describe("value/impact, 1–5 (required if creating)"),
+      urgency: score.optional().describe("time pressure, 1–5 (default 3)"),
       tags: z.array(z.string()).optional(),
       project: z.string().optional(),
       est: z.string().optional(),
@@ -95,7 +97,8 @@ export function buildServer(engine: Engine): McpServer {
       at: z.string().describe("when it started, e.g. \"yesterday 14:00\""),
       title: z.string().optional(),
       query: z.string().optional(),
-      imp: imp.optional(),
+      importance: score.optional().describe("value/impact, 1–5 (required if creating)"),
+      urgency: score.optional().describe("time pressure, 1–5 (default 3)"),
       tags: z.array(z.string()).optional(),
       project: z.string().optional(),
     },
@@ -121,6 +124,40 @@ export function buildServer(engine: Engine): McpServer {
     "Show the kanban board (todo/doing/paused/blocked/done), optionally filtered by project.",
     { project: z.string().optional() },
     async (a) => run(() => engine.board(a.project)),
+  );
+
+  server.tool(
+    "edit",
+    "Edit an existing task's fields: rename its title, or change importance/urgency (1–5)/estimate/deadline/parent/project/tags. Pass only the fields that change; use clear to unset optional fields. Re-renders the board live. For renaming a project across many tasks, use rename instead.",
+    {
+      query: z.string().describe("phrase to resolve the task to edit"),
+      title: z.string().optional(),
+      importance: score.optional().describe("value/impact, 1–5"),
+      urgency: score.optional().describe("time pressure, 1–5"),
+      tags: z.array(z.string()).optional(),
+      project: z.string().optional(),
+      est: z.string().optional().describe('estimate, e.g. "2h", "90m"'),
+      deadline: z.string().optional().describe("YYYY-MM-DD"),
+      parent: z.string().optional().describe("WBS parent task slug or phrase"),
+      period: z.string().optional(),
+      clear: z
+        .array(z.enum(["project", "est", "deadline", "parent", "period"]))
+        .optional()
+        .describe("optional fields to unset"),
+      at: z.string().optional(),
+    },
+    async (a) => run(() => engine.edit(a)),
+  );
+
+  server.tool(
+    "rename",
+    "Rename a project across every task that carries it (bulk fix for a mistyped project name). The live board reflects it immediately — no need to edit events.jsonl.",
+    {
+      project: z.string().describe("current project name"),
+      to: z.string().describe("new project name"),
+      at: z.string().optional(),
+    },
+    async (a) => run(() => engine.rename(a)),
   );
 
   server.tool(

@@ -25,7 +25,7 @@ describe("board.md", () => {
     const boardFile = join(dirname(paths.home), "board.md"); // repo root, beside .tempo
     const e = new Engine(paths);
 
-    e.add({ title: "Auth bug", imp: "high", project: "api", deadline: "2026-08-10" });
+    e.add({ title: "Auth bug", importance: 5, project: "api", deadline: "2026-08-10" });
     expect(existsSync(boardFile)).toBe(true);
     let md = readFileSync(boardFile, "utf8");
     expect(md).toContain("# Tempo Board");
@@ -58,7 +58,7 @@ describe("board.md", () => {
   it("writes board.md at the repo root, not inside .tempo", () => {
     const paths = tmpStore();
     const e = new Engine(paths);
-    e.add({ title: "T", imp: "med" });
+    e.add({ title: "T", importance: 3 });
     expect(existsSync(join(dirname(paths.home), "board.md"))).toBe(true);
     expect(existsSync(join(paths.home, "board.md"))).toBe(false);
     expect(e.boardFile()).toBe(join(dirname(paths.home), "board.md"));
@@ -67,7 +67,7 @@ describe("board.md", () => {
   it("puts a backdated start (timed before its create) in Doing, not To Do", () => {
     const paths = tmpStore();
     const e = new Engine(paths);
-    e.add({ title: "Fix data source page bug", imp: "high", project: "api" }); // created live (now)
+    e.add({ title: "Fix data source page bug", importance: 5, project: "api" }); // created live (now)
     e.start({ query: "fix-data", at: "2020-01-01T09:00:00Z" }); // backdated well before the create
 
     const cols = e.board().columns;
@@ -86,13 +86,43 @@ describe("board.md", () => {
     const paths = tmpStore();
     const boardFile = join(dirname(paths.home), "board.md");
     const e = new Engine(paths);
-    e.add({ title: "T", imp: "med" });
+    e.add({ title: "T", importance: 3 });
     e.start({ query: "t" });
     // wipe the snapshot, then a no-op start should rebuild it
     rmSync(boardFile);
     const r = e.start({ query: "t" }) as { alreadyActive?: boolean };
     expect(r.alreadyActive).toBe(true);
     expect(existsSync(boardFile)).toBe(true);
+  });
+});
+
+describe("board — WBS hierarchy & rollup", () => {
+  it("nests children under their parent in the Work Breakdown tree", () => {
+    const paths = tmpStore();
+    const boardFile = join(dirname(paths.home), "board.md");
+    const e = new Engine(paths);
+    e.add({ title: "Create project workflow", importance: 5, project: "api", est: "8h" });
+    e.add({ title: "Create onboarding workflow", importance: 3, est: "3h", parent: "create-project-workflow" });
+
+    const md = readFileSync(boardFile, "utf8");
+    expect(md).toContain("## Work Breakdown");
+    const lines = md.split("\n");
+    const parent = lines.findIndex((l) => l.includes("`create-project-workflow`") && l.trimStart().startsWith("-"));
+    const child = lines.findIndex((l) => l.includes("`create-onboarding-workflow`") && l.trimStart().startsWith("-"));
+    expect(parent).toBeGreaterThanOrEqual(0);
+    expect(child).toBeGreaterThan(parent); // child rendered after parent
+    // child is indented deeper than the parent
+    const indent = (l: string) => l.length - l.trimStart().length;
+    expect(indent(lines[child])).toBeGreaterThan(indent(lines[parent]));
+  });
+
+  it("renders a project rollup with estimate vs logged", () => {
+    const paths = tmpStore();
+    const e = new Engine(paths);
+    e.add({ title: "Task", importance: 3, project: "api", est: "2h" });
+    const md = readFileSync(join(dirname(paths.home), "board.md"), "utf8");
+    expect(md).toContain("## Project rollup");
+    expect(md).toContain("api");
   });
 });
 
@@ -105,10 +135,10 @@ describe("board metrics", () => {
     ({ logged_at: o.at, source: "live", ...o }) as Event;
 
   const events: Event[] = [
-    ev({ id: "c1", at: "2026-08-05T09:00:00Z", type: "task.created", task: "api-work", title: "API work", imp: "high", tags: [], project: "api", estMin: 120 } as Partial<Event> as never),
+    ev({ id: "c1", at: "2026-08-05T09:00:00Z", type: "task.created", task: "api-work", title: "API work", importance: 5, tags: [], project: "api", estMin: 120 } as Partial<Event> as never),
     ev({ id: "s1", at: "2026-08-05T09:00:00Z", type: "task.started", task: "api-work" } as never),
     ev({ id: "e1", at: "2026-08-05T11:00:00Z", type: "task.stopped", task: "api-work", status: "done" } as never),
-    ev({ id: "c2", at: "2026-08-05T13:00:00Z", type: "task.created", task: "docs", title: "Docs", imp: "low", tags: [], project: "docs" } as never),
+    ev({ id: "c2", at: "2026-08-05T13:00:00Z", type: "task.created", task: "docs", title: "Docs", importance: 1, tags: [], project: "docs" } as never),
     ev({ id: "s2", at: "2026-08-05T13:00:00Z", type: "task.started", task: "docs" } as never),
     ev({ id: "e2", at: "2026-08-05T14:00:00Z", type: "task.stopped", task: "docs", status: "done" } as never),
   ];
@@ -123,10 +153,10 @@ describe("board metrics", () => {
     expect(md).toContain("api");
     expect(md).toContain("docs");
     expect(md).toContain("█"); // share bar rendered
-    // quadrant split: api-work is important-not-urgent (Q2), docs is Q4
-    expect(md).toContain("Time by quadrant");
-    expect(md).toContain("Q2");
-    expect(md).toContain("Q4");
+    // priority split across the two 1–5 axes + the value-vs-firefighting headline
+    expect(md).toContain("Time mix");
+    expect(md).toContain("Time by importance");
+    expect(md).toContain("Time by urgency");
     // estimate vs actual for the done, estimated task
     expect(md).toContain("Estimates vs actual");
     expect(md).toContain("api-work");

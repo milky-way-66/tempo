@@ -1,6 +1,10 @@
 // Domain types for Tempo — the event log and the derived projection.
 
-export type Importance = "high" | "med" | "low";
+// Priority is two independent 1–5 axes (the Eisenhower matrix, quantified):
+// `importance` (value/impact) and `urgency` (time pressure). 1 = lowest,
+// 5 = highest. Together they place a task in a quadrant and let time be
+// distributed across the importance × urgency plane.
+export type Score = 1 | 2 | 3 | 4 | 5;
 export type Reason = "urgent" | "blocked" | "distraction" | "break" | "meeting";
 export type StopStatus = "done" | "paused" | "blocked";
 export type Source = "live" | "backfill";
@@ -9,7 +13,9 @@ export type EventType =
   | "task.created"
   | "task.started"
   | "task.stopped"
+  | "task.updated"
   | "note"
+  | "project.renamed"
   | "period.opened"
   | "period.closed";
 
@@ -24,7 +30,8 @@ export type TaskCreated = Base & {
   type: "task.created";
   task: string; // slug id
   title: string;
-  imp: Importance;
+  importance: Score; // 1–5, value/impact
+  urgency?: Score; // 1–5, time pressure; defaults to 3 when omitted
   tags: string[];
   project?: string;
   estMin?: number;
@@ -44,6 +51,32 @@ export type TaskStopped = Base & {
   task: string;
   status: StopStatus;
   reason?: string;
+};
+
+// A sparse metadata patch on an existing task. Only keys that are present
+// change; an explicit `null` clears an optional field (est/deadline/parent/
+// project/period). Spans and status are never touched here — those are derived
+// from the started/stopped timeline.
+export type TaskUpdated = Base & {
+  type: "task.updated";
+  task: string;
+  title?: string;
+  importance?: Score;
+  urgency?: Score;
+  tags?: string[];
+  project?: string | null;
+  estMin?: number | null;
+  deadline?: string | null;
+  parent?: string | null;
+  period?: string | null;
+};
+
+// Bulk-rename a project across every task that carries it. One event fixes a
+// mistyped project name instead of editing the log by hand.
+export type ProjectRenamed = Base & {
+  type: "project.renamed";
+  from: string;
+  to: string;
 };
 
 export type NoteEvent = Base & {
@@ -70,6 +103,8 @@ export type Event =
   | TaskCreated
   | TaskStarted
   | TaskStopped
+  | TaskUpdated
+  | ProjectRenamed
   | NoteEvent
   | PeriodOpened
   | PeriodClosed;
@@ -86,7 +121,8 @@ export type TaskStatus = "todo" | "doing" | "paused" | "blocked" | "done";
 export interface Task {
   id: string;
   title: string;
-  imp: Importance;
+  importance: Score; // 1–5
+  urgency: Score; // 1–5
   tags: string[];
   project?: string;
   estMin?: number;
