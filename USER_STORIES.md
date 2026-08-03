@@ -1,9 +1,20 @@
 # Kaban — User Stories
 
-> Status: **draft.** Derived from [DESIGN.md](DESIGN.md). Written to pin down *what the tool must
-> let a person do* before any code exists. Ordering follows the user's own workflow: plan the
-> period, then capture the work, then read back what happened; the forward-looking layer comes last.
+> Status: **draft — the starting point.** This document is now the anchor for the app: use cases
+> and design will be derived from these stories. Written to pin down *what the tool must let a person
+> do* before any code exists. Ordering follows the user's own workflow: plan the period, then
+> capture the work, then read back what happened; the forward-looking layer comes last.
 > Last updated: 2026-08-03
+
+## What the app is (one paragraph)
+
+A git-backed, event-sourced time/task tracker you **narrate to Claude instead of using a timer.**
+Everything is a timestamped event appended to one `log.jsonl`; state (time spent, board, plan
+progress) is *computed* by replaying events, never edited directly. Claude never reads or writes the
+log itself — it shells out to a small `kaban` CLI that owns the schema, the append-only invariant,
+and every derived number. From that one log you get planning, a Kanban board, time tracking,
+estimate-vs-actual, interruption impact, and — later, as history accumulates — a personal estimator
+and reschedule/ripple engine.
 
 ## How to read this
 
@@ -24,12 +35,6 @@ phrased against observable CLI behavior, since the CLI — not the LLM — owns 
 A cross-cutting non-negotiable, true of every story below: **Claude never reads or writes
 `log.jsonl` directly — it shells out to `kaban`.** Where that constraint is testable, it appears in
 the criteria.
-
-> **Note vs DESIGN.md.** DESIGN.md is capture-first; it has no explicit *planning* ritual. Epic P
-> below adds one (plan the period → break down → estimate → commit to a horizon). It stays true to
-> the core: a plan is **derived from events**, not a separate editable artifact. Capturing "planning"
-> as a real, first-class activity is itself one of the design's motivating examples (sprint planning
-> is the backfill case in DESIGN.md).
 
 ---
 
@@ -201,7 +206,7 @@ that** signal that's impossible to reconstruct later is captured now.
 **Acceptance**
 - A `note` event ties free text to a task; an optional energy/friction marker is capturable at event
   time.
-- Never required — capture stays low-overhead (design principle 8).
+- Never required — capture stays low-overhead.
 
 ---
 
@@ -383,7 +388,7 @@ and candidate mitigations, **so that** I renegotiate from evidence.
   fixed focus-hours number).
 - No LLM-authored numbers — every reported figure comes from reproducible CLI computation.
 
-## Open questions carried from DESIGN.md + this pass (affect story acceptance)
+## Open questions (affect story acceptance)
 
 1. Is a task a first-class object (own id/estimate/deadline/status) or emergent from events?
    (Leaning first-class-lite — affects P2/B1/B2. A WBS parent/child relationship pushes toward
