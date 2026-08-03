@@ -16,6 +16,21 @@ and every derived number. From that one log you get planning, a Kanban board, ti
 estimate-vs-actual, interruption impact, and — later, as history accumulates — a personal estimator
 and reschedule/ripple engine.
 
+## Primary workflow (the lived cadence)
+
+The stories exist to serve one continuous loop:
+
+1. **Plan** the week / 2-week sprint and break it into a WBS with estimates. → *P1–P4*
+2. **Work** through it, narrating as I go — and absorb **new urgent work** that lands mid-week,
+   checking its impact before I commit. → *A1–A6, P7*
+3. **Keep track of the overall** at any moment — what I'm doing, what's blocking, what remains — so I
+   know if I'm on track for the deadline. → *C0, B1, P5*
+4. **Analyze** the work from the data — time distribution, effectiveness, estimate accuracy — to
+   improve the next cycle. → *C1–C5, later Epic E*
+
+Everything below is a detailed telling of these four beats. If a story doesn't serve one of them,
+question whether it belongs.
+
 ## How to read this
 
 Stories are grouped by capability, not by screen (there are no screens — the interface is chat).
