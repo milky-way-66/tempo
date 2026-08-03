@@ -1,0 +1,9 @@
+# OS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Claude local (keep .mcp.json shared, ignore personal overrides)
+.claude/settings.local.json
