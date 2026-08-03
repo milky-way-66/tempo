@@ -2,6 +2,10 @@
 
 All notable changes to Tempo, newest first.
 
+## 0.1.8 — 2026-08-03
+
+- DB-style migrations: guide field, tempo upgrade, step-behind reporting (1d09846)
+
 ## 0.1.7 — 2026-08-03
 
 - Binary priority categories, calendar Gantt, and append-only archive (c4b23f1)
