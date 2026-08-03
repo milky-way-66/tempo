@@ -2,6 +2,10 @@
 
 All notable changes to Tempo, newest first.
 
+## 0.1.9 — 2026-08-03
+
+- board.html: Frappe Gantt, value metrics, priority-map filter, icons, kanban scroll (af4fb52)
+
 ## 0.1.8 — 2026-08-03
 
 - DB-style migrations: guide field, tempo upgrade, step-behind reporting (1d09846)
