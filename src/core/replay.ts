@@ -34,31 +34,36 @@ export function replay(input: Event[]): Projection {
   const order: string[] = [];
   const interruptionsAt: string[] = [];
 
+  // Pass 1 — establish task existence from every `task.created`, so a
+  // backdated `started`/`stopped` (logged later but timed earlier than the
+  // create) still applies instead of being dropped for a not-yet-seen task.
+  for (const e of events) {
+    if (e.type !== "task.created" || tasks.has(e.task)) continue;
+    tasks.set(e.task, {
+      id: e.task,
+      title: e.title,
+      imp: e.imp,
+      tags: e.tags ?? [],
+      project: e.project,
+      estMin: e.estMin,
+      deadline: e.deadline,
+      parent: e.parent,
+      period: e.period,
+      spans: [],
+      status: "todo",
+      createdAt: e.at,
+    });
+    order.push(e.task);
+  }
+
+  // Pass 2 — apply the timeline (started/stopped/notes/periods) in `at` order.
   for (const e of events) {
     switch (e.type) {
-      case "task.created": {
-        if (!tasks.has(e.task)) {
-          tasks.set(e.task, {
-            id: e.task,
-            title: e.title,
-            imp: e.imp,
-            tags: e.tags ?? [],
-            project: e.project,
-            estMin: e.estMin,
-            deadline: e.deadline,
-            parent: e.parent,
-            period: e.period,
-            spans: [],
-            status: "todo",
-            createdAt: e.at,
-          });
-          order.push(e.task);
-        }
-        break;
-      }
+      case "task.created":
+        break; // already applied in pass 1
       case "task.started": {
         const t = tasks.get(e.task);
-        if (!t) break; // started before created — check() flags this
+        if (!t) break; // started with no task.created anywhere — check() flags this
         const open = t.spans.find((s) => s.end === undefined);
         if (!open) t.spans.push({ start: e.at });
         t.status = "doing";

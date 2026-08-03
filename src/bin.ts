@@ -51,9 +51,9 @@ function nextSteps(paths: Paths, link: LinkResult): string {
   return [
     "",
     "The store lives inside this repo — commit it with your normal git workflow:",
-    "  git add .tempo CLAUDE.md && git commit -m \"tempo: init\"",
+    "  git add .tempo CLAUDE.md board.md && git commit -m \"tempo: init\"",
     "",
-    `Your live board is written to ${join(paths.home, "board.md")}`,
+    `Your live board is written to ${join(dirname(paths.home), "board.md")} (repo root)`,
     "  — it auto-updates after every logged change; open it to watch your work.",
     "",
     "Register the MCP server with Claude Code (run from this repo):",

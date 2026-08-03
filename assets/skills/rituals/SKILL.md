@@ -28,6 +28,14 @@ Drive these through the `tempo` MCP tools. Keep it conversational; capture the m
 3. `report` {window:"week", by:"project"} and `by:"tag"` for the breakdown.
 4. Reflect: was the week effective, or did low-value work dominate? Suggest one adjustment.
 
+## Closing a task (marking work done)
+
+1. **Recheck the result before recording `done`** — run the tests/build, re-run the flow, confirm the
+   bug is gone or the change is live. Work can fail; `done` must mean verified.
+2. If it holds: `stop` {query, status:"done"}. Share the est-vs-actual verdict the tool returns.
+3. If it didn't: `stop` {status:"blocked"} (or leave it running) with a `reason`, and `note` what
+   failed — never record `done` for unverified work.
+
 ## Interruption (urgent work lands mid-sprint)
 
 1. `report` {window:"sprint", adding:<estimate>} — show the impact before accepting.

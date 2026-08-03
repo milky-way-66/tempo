@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { Engine } from "../src/core/engine";
 import { metricsMarkdown } from "../src/core/report";
 import { replay } from "../src/core/replay";
@@ -9,7 +9,8 @@ import { ConfigSchema, type Paths } from "../src/core/config";
 import type { Event } from "../src/types";
 
 function tmpStore(): Paths {
-  const home = mkdtempSync(join(tmpdir(), "tempo-board-"));
+  const root = mkdtempSync(join(tmpdir(), "tempo-board-"));
+  const home = join(root, ".tempo"); // mirror production: store nested in the repo root
   return {
     home,
     eventsFile: join(home, "events.jsonl"),
@@ -21,7 +22,7 @@ function tmpStore(): Paths {
 describe("board.md", () => {
   it("is (re)written after each event with the current state", () => {
     const paths = tmpStore();
-    const boardFile = join(paths.home, "board.md");
+    const boardFile = join(dirname(paths.home), "board.md"); // repo root, beside .tempo
     const e = new Engine(paths);
 
     e.add({ title: "Auth bug", imp: "high", project: "api", deadline: "2026-08-10" });
@@ -46,12 +47,52 @@ describe("board.md", () => {
   it("renders a valid grid even with an empty log", () => {
     const paths = tmpStore();
     new Engine(paths).renderBoard();
-    const md = readFileSync(join(paths.home, "board.md"), "utf8");
+    const md = readFileSync(join(dirname(paths.home), "board.md"), "utf8");
     expect(md).toContain("# Tempo Board");
     expect(md).toContain("**0** tasks");
     expect(md).toMatch(/\| ---/); // table separator present
     expect(md).toContain("## Metrics");
     expect(md).toContain("No time logged yet");
+  });
+
+  it("writes board.md at the repo root, not inside .tempo", () => {
+    const paths = tmpStore();
+    const e = new Engine(paths);
+    e.add({ title: "T", imp: "med" });
+    expect(existsSync(join(dirname(paths.home), "board.md"))).toBe(true);
+    expect(existsSync(join(paths.home, "board.md"))).toBe(false);
+    expect(e.boardFile()).toBe(join(dirname(paths.home), "board.md"));
+  });
+
+  it("puts a backdated start (timed before its create) in Doing, not To Do", () => {
+    const paths = tmpStore();
+    const e = new Engine(paths);
+    e.add({ title: "Fix data source page bug", imp: "high", project: "api" }); // created live (now)
+    e.start({ query: "fix-data", at: "2020-01-01T09:00:00Z" }); // backdated well before the create
+
+    const cols = e.board().columns;
+    expect(cols.doing.map((t) => t.id)).toContain("fix-data-source-page-bug");
+    expect(cols.todo.map((t) => t.id)).not.toContain("fix-data-source-page-bug");
+    expect(e.check().ok).toBe(true); // no false "started before created"
+
+    const md = readFileSync(join(dirname(paths.home), "board.md"), "utf8");
+    // board.md must agree with the live board: the task is under Doing.
+    const doingCol = md.split("\n").find((l) => l.includes("fix-data-source-page-bug"));
+    expect(doingCol).toBeTruthy();
+    expect(e.board().columns.doing.length).toBe(1);
+  });
+
+  it("re-renders board.md on an idempotent start (already active)", () => {
+    const paths = tmpStore();
+    const boardFile = join(dirname(paths.home), "board.md");
+    const e = new Engine(paths);
+    e.add({ title: "T", imp: "med" });
+    e.start({ query: "t" });
+    // wipe the snapshot, then a no-op start should rebuild it
+    rmSync(boardFile);
+    const r = e.start({ query: "t" }) as { alreadyActive?: boolean };
+    expect(r.alreadyActive).toBe(true);
+    expect(existsSync(boardFile)).toBe(true);
   });
 });
 

@@ -13,6 +13,10 @@ directly — always go through the tools; every number comes from them.
   Y with `reason:"urgent"`.
 - Time is derived from `start`/`stop` spans — a task accumulates many spans; don't worry about
   precision, just capture starts and stops. For past/untracked work use `log` with a duration.
+- **Verify before "done".** Work can fail, so a status change to `done` means *verified* done — not
+  merely attempted. Before recording `stop {status:"done"}`, recheck the result actually holds (tests
+  pass, the bug no longer reproduces, the change is live). If it didn't hold, don't mark it done:
+  keep it running, or `stop {status:"blocked"}` with a `reason`, and add a `note` on what failed.
 
 ## Mapping what I say → tools
 
@@ -21,7 +25,7 @@ directly — always go through the tools; every number comes from them.
 | "starting the auth bug, ~2h, it's important" | `start` {title/query, est:"2h", imp:"high", tags:["bug"]} |
 | "boss pulled me onto a hotfix, urgent" | `stop` {status:"paused"} then `start` {title:"hotfix", reason:"urgent", imp:"high"} |
 | "also picking up the docs" | `start` {title:"docs", …} — leave others running |
-| "done" / "pausing" / "blocked on review" | `stop` {status:"done"|"paused"|"blocked"} |
+| "done" / "pausing" / "blocked on review" | recheck the result first, then `stop` {status:"done"|"paused"|"blocked"} — `done` only if it verified |
 | "had a 1h standup at 9" | `log` {title:"standup", tags:["meeting"], dur:"1h", at:"today 09:00"} |
 | "this was harder than expected" | `note` {text:…, energy:"hard"} |
 | "plan a 2-week sprint from Monday" | `period` {action:"open", len:"2w", start:"monday"} then `add` the tasks |

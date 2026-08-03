@@ -1,6 +1,6 @@
 import { DateTime } from "luxon";
-import { writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { writeFileSync, existsSync, unlinkSync } from "node:fs";
+import { join, dirname } from "node:path";
 import { resolvePaths, loadConfig, type Paths, type Config } from "./config.js";
 import { append, readAll } from "./store.js";
 import { replay } from "./replay.js";
@@ -71,10 +71,24 @@ export class Engine {
     // themselves, so Tempo does not auto-commit.
   }
 
-  /** Rewrite `.tempo/board.md` from the current projection. Called after every event. */
+  /** Absolute path of the board file — at the repo root, beside the `.tempo/` store. */
+  boardFile(): string {
+    return join(dirname(this.paths.home), "board.md");
+  }
+
+  /** Rewrite `board.md` (repo root) from the current projection. Called after every event. */
   renderBoard(): void {
     const md = boardMarkdown(this.projection, this.config, this.nowISO());
-    writeFileSync(join(this.paths.home, "board.md"), md, "utf8");
+    writeFileSync(this.boardFile(), md, "utf8");
+    // Remove the legacy in-store copy that older versions wrote to `.tempo/board.md`.
+    const legacy = join(this.paths.home, "board.md");
+    if (legacy !== this.boardFile() && existsSync(legacy)) {
+      try {
+        unlinkSync(legacy);
+      } catch {
+        /* best-effort */
+      }
+    }
   }
 
   private envelope(at?: string): { id: string; at: string; logged_at: string; source: "live" | "backfill" } {
@@ -128,6 +142,8 @@ export class Engine {
     const alreadyOpen = t?.spans.some((s) => s.end === undefined);
     if (!alreadyOpen) {
       this.write({ ...this.envelope(args.at), type: "task.started", task, reason: args.reason });
+    } else {
+      this.renderBoard(); // no state change, but re-sync the snapshot on demand
     }
     return { task, title: this.projection.tasks.get(task)?.title, alreadyActive: !!alreadyOpen };
   }

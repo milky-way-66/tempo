@@ -71,8 +71,9 @@ to the log; **you** commit `.tempo/` whenever you commit your work. `.gitattribu
 `merge=union` so multiple machines merge cleanly; replay dedups by event id and sorts by time, so
 order and duplicates never corrupt the numbers.
 
-`.tempo/board.md` is a live Markdown dashboard, **regenerated after every logged change** — open it in
-your editor to watch it update as you narrate your work. It holds a kanban of your tasks
+`board.md` (at the repo root, beside `.tempo/`) is a live Markdown dashboard, **regenerated after
+every logged change** — open it in your editor to watch it update as you narrate your work. It holds a
+kanban of your tasks
 (To Do · Doing · Done) plus a metrics section: today/this-week time totals with multitask factor,
 time distribution by project and by Eisenhower quadrant (with bars), an open-sprint plan check, and
 estimate-vs-actual for finished tasks.

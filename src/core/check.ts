@@ -74,15 +74,15 @@ export function check(read: ReadResult, projection: Projection, nowISO: string):
     valid.push(e);
   }
 
-  // impossible-state pass
-  const created = new Set<string>();
+  // impossible-state pass. Existence is derived from the whole log (like replay),
+  // so a backdated start/stop timed before its own `task.created` is fine — only
+  // a start/stop for a task that was NEVER created is impossible.
+  const everCreated = new Set(valid.filter((e) => e.type === "task.created").map((e) => e.task));
   const open = new Set<string>();
   for (const e of ordered(valid)) {
-    if (e.type === "task.created") {
-      created.add(e.task);
-    } else if (e.type === "task.started") {
-      if (!created.has(e.task))
-        issues.push({ kind: "impossible", detail: "started before created", task: e.task, at: e.at });
+    if (e.type === "task.started") {
+      if (!everCreated.has(e.task))
+        issues.push({ kind: "impossible", detail: "started without a task.created", task: e.task, at: e.at });
       if (open.has(e.task))
         issues.push({ kind: "impossible", detail: "double start (already open)", task: e.task, at: e.at });
       open.add(e.task);
