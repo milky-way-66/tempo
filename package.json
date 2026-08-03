@@ -1,6 +1,6 @@
 {
   "name": "@milkyway-666/tempo",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Tempo — a personal, chat-driven work tracker. Narrate your work to an agent; it appends an event log and derives your board, time, and plans. Runs as a local MCP server for Claude Code.",
   "type": "module",
   "bin": {

@@ -2,6 +2,10 @@
 
 All notable changes to Tempo, newest first.
 
+## 0.1.10 — 2026-08-03
+
+- Fix Work Breakdown Gantt not rendering any task bars (d6b6c4d)
+
 ## 0.1.9 — 2026-08-03
 
 - board.html: Frappe Gantt, value metrics, priority-map filter, icons, kanban scroll (af4fb52)
