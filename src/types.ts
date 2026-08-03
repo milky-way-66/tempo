@@ -110,5 +110,6 @@ export interface Projection {
   tasks: Map<string, Task>;
   periods: Map<string, Period>;
   interruptions: number; // count of starts carrying a reason
+  interruptionsAt: string[]; // ISO instant of each interrupting start (for windowed reports)
   order: string[]; // task ids in creation order (for stable listing)
 }

@@ -1,0 +1,146 @@
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import { Engine } from "./core/engine.js";
+
+const imp = z.enum(["high", "med", "low"]);
+const reason = z.enum(["urgent", "blocked", "distraction", "break", "meeting"]);
+const stopStatus = z.enum(["done", "paused", "blocked"]);
+const energy = z.enum(["hard", "easy"]);
+const windowKind = z.enum(["today", "week", "sprint"]);
+const byDim = z.enum(["project", "tag", "quadrant"]);
+
+type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
+
+function ok(result: unknown): ToolResult {
+  const r = result as { text?: string };
+  const text = typeof r?.text === "string" ? r.text : JSON.stringify(result);
+  return { content: [{ type: "text", text }] };
+}
+
+function run(fn: () => unknown): ToolResult {
+  try {
+    return ok(fn());
+  } catch (e) {
+    return { content: [{ type: "text", text: `error: ${(e as Error).message}` }], isError: true };
+  }
+}
+
+export function buildServer(engine: Engine): McpServer {
+  const server = new McpServer({ name: "tempo", version: "0.1.0" });
+
+  server.tool(
+    "add",
+    "Define a task without starting it (planning / WBS). Importance is required. A task is any unit of work — coding, meeting, review — categorized by tags.",
+    {
+      title: z.string(),
+      imp,
+      tags: z.array(z.string()).optional(),
+      project: z.string().optional(),
+      est: z.string().optional().describe('estimate, e.g. "2h", "90m"'),
+      deadline: z.string().optional().describe("YYYY-MM-DD"),
+      parent: z.string().optional().describe("WBS parent task slug"),
+      period: z.string().optional(),
+      at: z.string().optional(),
+    },
+    async (a) => run(() => engine.add(a)),
+  );
+
+  server.tool(
+    "start",
+    "Begin (or switch to) a task; creates it inline if new. Other active tasks keep running (multitasking). Set reason when this start is an urgent interruption.",
+    {
+      query: z.string().optional().describe("phrase to resolve an existing task"),
+      title: z.string().optional().describe("title for a new task"),
+      imp: imp.optional(),
+      tags: z.array(z.string()).optional(),
+      project: z.string().optional(),
+      est: z.string().optional(),
+      deadline: z.string().optional(),
+      period: z.string().optional(),
+      reason: reason.optional(),
+      at: z.string().optional(),
+    },
+    async (a) => run(() => engine.start(a)),
+  );
+
+  server.tool(
+    "stop",
+    "Stop a task. status: done (default), paused (chose to stop), or blocked (can't continue). Defaults to the single active task if no query.",
+    {
+      query: z.string().optional(),
+      status: stopStatus.optional(),
+      reason: z.string().optional(),
+      at: z.string().optional(),
+    },
+    async (a) => run(() => engine.stop(a)),
+  );
+
+  server.tool(
+    "note",
+    "Attach a free-text note (and optional energy marker) to a task, defaulting to the active one.",
+    {
+      text: z.string(),
+      query: z.string().optional(),
+      energy: energy.optional(),
+      at: z.string().optional(),
+    },
+    async (a) => run(() => engine.note(a)),
+  );
+
+  server.tool(
+    "log",
+    "Record a past finished activity with a duration (meetings, untracked work). Expands to a started+stopped span.",
+    {
+      dur: z.string().describe('duration, e.g. "1h", "45m"'),
+      at: z.string().describe("when it started, e.g. \"yesterday 14:00\""),
+      title: z.string().optional(),
+      query: z.string().optional(),
+      imp: imp.optional(),
+      tags: z.array(z.string()).optional(),
+      project: z.string().optional(),
+    },
+    async (a) => run(() => engine.log(a)),
+  );
+
+  server.tool(
+    "period",
+    "Open or close a planning period (week / sprint). len like \"1w\" or \"2w\".",
+    {
+      action: z.enum(["open", "close"]),
+      name: z.string().optional(),
+      start: z.string().optional(),
+      len: z.string().optional(),
+      capacity: z.number().optional().describe("focus-hours/day override"),
+      at: z.string().optional(),
+    },
+    async (a) => run(() => engine.period(a)),
+  );
+
+  server.tool(
+    "board",
+    "Show the kanban board (todo/doing/paused/blocked/done), optionally filtered by project.",
+    { project: z.string().optional() },
+    async (a) => run(() => engine.board(a.project)),
+  );
+
+  server.tool(
+    "report",
+    "Time report for a window: net vs gross hours, interruptions, distribution (by project/tag/quadrant), est-vs-actual, and on-track verdict for a sprint. Use adding for an interruption what-if.",
+    {
+      window: windowKind,
+      by: byDim.optional(),
+      adding: z.string().optional().describe("what-if: add this estimate to the sprint"),
+      at: z.string().optional(),
+    },
+    async (a) => run(() => engine.report(a)),
+  );
+
+  server.tool(
+    "check",
+    "Validate the log: schema, impossible states, and data-quality metrics. Overlaps (multitasking) are not errors.",
+    {},
+    async () => run(() => engine.check()),
+  );
+
+  return server;
+}

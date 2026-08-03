@@ -29,7 +29,7 @@ export function replay(input: Event[]): Projection {
   const tasks = new Map<string, Task>();
   const periods = new Map<string, Period>();
   const order: string[] = [];
-  let interruptions = 0;
+  const interruptionsAt: string[] = [];
 
   for (const e of events) {
     switch (e.type) {
@@ -59,7 +59,7 @@ export function replay(input: Event[]): Projection {
         const open = t.spans.find((s) => s.end === undefined);
         if (!open) t.spans.push({ start: e.at });
         t.status = "doing";
-        if (e.reason) interruptions++;
+        if (e.reason) interruptionsAt.push(e.at);
         break;
       }
       case "task.stopped": {
@@ -88,7 +88,7 @@ export function replay(input: Event[]): Projection {
       }
     }
   }
-  return { tasks, periods, interruptions, order };
+  return { tasks, periods, interruptions: interruptionsAt.length, interruptionsAt, order };
 }
 
 // ---- time helpers ----
