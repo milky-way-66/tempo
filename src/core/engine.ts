@@ -1,4 +1,6 @@
 import { DateTime } from "luxon";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { resolvePaths, loadConfig, type Paths, type Config } from "./config.js";
 import { append, readAll } from "./store.js";
 import { replay } from "./replay.js";
@@ -7,6 +9,7 @@ import { resolve } from "./resolve.js";
 import {
   board,
   boardText,
+  boardMarkdown,
   report,
   reportText,
   stopVerdict,
@@ -63,8 +66,15 @@ export class Engine {
   private write(ev: Event): void {
     append(this.paths, ev);
     this.projection = replay(readAll(this.paths).events);
+    this.renderBoard();
     // The store lives inside the user's management repo; they commit `.tempo/`
     // themselves, so Tempo does not auto-commit.
+  }
+
+  /** Rewrite `.tempo/board.md` from the current projection. Called after every event. */
+  renderBoard(): void {
+    const md = boardMarkdown(this.projection, this.config, this.nowISO());
+    writeFileSync(join(this.paths.home, "board.md"), md, "utf8");
   }
 
   private envelope(at?: string): { id: string; at: string; logged_at: string; source: "live" | "backfill" } {

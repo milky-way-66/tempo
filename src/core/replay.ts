@@ -2,12 +2,15 @@ import type { Event, Projection, Task, Period } from "../types.js";
 import { minutesBetween } from "./time.js";
 
 // At the same instant, order by causal priority so replay is independent of id/append order:
-// a task must be `created` before it can be `started`; a `stopped` closes before the next `started`
-// opens (a same-instant switch). `logged_at` then `id` are final, arbitrary-but-stable tiebreaks.
+// within a task it must go created → started → stopped, so a task created, started, and stopped in
+// the same millisecond (a quick task logged in one breath) folds into a closed span rather than a
+// stray open one. Ordering `started` before `stopped` is safe across *different* tasks too — spans
+// are keyed by their `at` timestamp, so a same-instant switch (stop A, start B) yields identical
+// span math regardless of which is processed first. `logged_at` then `id` are final stable tiebreaks.
 const RANK: Record<Event["type"], number> = {
   "task.created": 0,
-  "task.stopped": 1,
-  "task.started": 2,
+  "task.started": 1,
+  "task.stopped": 2,
   note: 3,
   "period.opened": 4,
   "period.closed": 5,

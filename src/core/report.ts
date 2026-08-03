@@ -42,6 +42,57 @@ export function boardText(p: Projection, project?: string): string {
   return lines.join("\n");
 }
 
+const COL_TITLES: Record<(typeof COLS)[number], string> = {
+  todo: "📋 To Do",
+  doing: "🔨 Doing",
+  paused: "⏸️ Paused",
+  blocked: "🚧 Blocked",
+  done: "✅ Done",
+};
+// Always show these; paused/blocked are shown only when they hold something.
+const CORE_COLS = new Set<(typeof COLS)[number]>(["todo", "doing", "done"]);
+
+/**
+ * Render the board as a GitHub-flavored Markdown kanban grid: one column per
+ * status, tasks stacked down each column. Regenerated after every event so the
+ * `.tempo/board.md` file is always a live view of the current state.
+ */
+export function boardMarkdown(p: Projection, config: Config, nowISO: string, project?: string): string {
+  const cols = board(p, project);
+  const shown = COLS.filter((c) => CORE_COLS.has(c) || cols[c].length > 0);
+  const esc = (s: string) => s.replace(/\|/g, "\\|");
+
+  const cell = (it: BoardItem): string => {
+    const t = p.tasks.get(it.id)!;
+    const flag = it.imp === "high" ? " ⚑" : "";
+    const proj = it.project ? ` _[${esc(it.project)}]_` : "";
+    const dl = t.deadline ? ` ⏰ ${t.deadline}` : "";
+    return `\`${it.id}\` ${esc(it.title)}${flag}${proj}${dl}`;
+  };
+
+  const columns = shown.map((c) => cols[c].map(cell));
+  const rowCount = columns.reduce((m, col) => Math.max(m, col.length), 0);
+
+  const header = `| ${shown.map((c) => `${COL_TITLES[c]} (${cols[c].length})`).join(" | ")} |`;
+  const sep = `| ${shown.map(() => "---").join(" | ")} |`;
+  const bodyRows: string[] = [];
+  for (let r = 0; r < rowCount; r++) {
+    bodyRows.push(`| ${columns.map((col) => col[r] ?? "").join(" | ")} |`);
+  }
+  if (rowCount === 0) bodyRows.push(`| ${shown.map(() => "—").join(" | ")} |`);
+
+  const total = p.order.filter((id) => !project || p.tasks.get(id)!.project === project).length;
+  const doing = cols.doing.length;
+  const generated = toDT(nowISO, config).toFormat("yyyy-LL-dd HH:mm");
+
+  const lines: string[] = ["# Tempo Board", ""];
+  lines.push(`> **${total}** task${total === 1 ? "" : "s"} · **${doing}** in progress · updated ${generated}`);
+  if (project) lines.push(">", `> project: **${esc(project)}**`);
+  lines.push("", header, sep, ...bodyRows, "");
+  lines.push("_⚑ important · ⏰ deadline — auto-generated after each change; do not edit by hand._");
+  return lines.join("\n") + "\n";
+}
+
 // ---- reports ----
 
 function zoneOf(config: Config): string | undefined {

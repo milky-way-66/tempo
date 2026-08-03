@@ -19,7 +19,7 @@ Run this from inside the git repo you want to track your work in (your "manageme
 ```bash
 npx @milkyway-666/tempo init                 # creates ./.tempo (config + rituals) in this repo
 claude mcp add tempo -- npx -y @milkyway-666/tempo mcp
-git add .tempo && git commit -m "tempo: init"
+git add .tempo CLAUDE.md && git commit -m "tempo: init"
 ```
 
 `.tempo/` is plain tracked files inside your repo — Tempo never creates its own git repo and never
@@ -27,7 +27,10 @@ commits for you; you commit and push `.tempo/` with your normal git workflow. Th
 the store by walking up from its working directory (like `git` finds `.git`), so it works from any
 subfolder of the repo.
 
-Then add `.tempo/assets/CLAUDE.md` to your Claude Code memory so the agent knows the rituals.
+`init` also wires the rituals into memory: Claude Code only auto-loads a `CLAUDE.md` at the repo root,
+so Tempo adds `@.tempo/assets/CLAUDE.md` to your root `CLAUDE.md` (creating it if absent). Because it's
+an `@import`, the rituals stay in sync when Tempo updates them — no manual copy step. `tempo check`
+warns if that link is ever missing.
 
 ### Migrating from an older global store
 
@@ -67,6 +70,9 @@ Everything lives in `.tempo/events.jsonl` (one JSON event per line) inside your 
 to the log; **you** commit `.tempo/` whenever you commit your work. `.gitattributes` sets
 `merge=union` so multiple machines merge cleanly; replay dedups by event id and sorts by time, so
 order and duplicates never corrupt the numbers.
+
+`.tempo/board.md` is a live Markdown kanban of your tasks (To Do · Doing · Done), **regenerated after
+every logged change** — open it in your editor to watch the board update as you narrate your work.
 
 `.tempo/version` records the on-disk store format version. `tempo migrate` upgrades an older store to
 the current version, reporting each step; `tempo check` prints the current `storeVersion`. Override

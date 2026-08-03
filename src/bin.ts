@@ -9,6 +9,13 @@ import { initStore } from "./core/git.js";
 import { initPaths, globalHome, defaultConfig, type Paths } from "./core/config.js";
 import { STORE_VERSION, writeStoreVersion, readStoreVersion } from "./core/version.js";
 import { upgradeStore } from "./core/migrate.js";
+import {
+  ensureRitualsLinked,
+  ritualsLinked,
+  ritualsImportPath,
+  rootClaudeMd,
+  type LinkResult,
+} from "./core/memory.js";
 
 function packageRoot(): string {
   // Bundled to dist/bin.js → package root is one level up (assets/ ships alongside dist/).
@@ -33,18 +40,28 @@ function copyAssets(paths: Paths): void {
   }
 }
 
-function nextSteps(paths: Paths): string {
+function ritualLine(paths: Paths, link: LinkResult): string {
+  const md = rootClaudeMd(paths);
+  if (link === "created") return `Created ${md} importing the rituals (@${ritualsImportPath(paths)}).`;
+  if (link === "patched") return `Added the rituals import (@${ritualsImportPath(paths)}) to ${md}.`;
+  return `${md} already imports the rituals (@${ritualsImportPath(paths)}).`;
+}
+
+function nextSteps(paths: Paths, link: LinkResult): string {
   return [
     "",
     "The store lives inside this repo — commit it with your normal git workflow:",
-    "  git add .tempo && git commit -m \"tempo: init\"",
+    "  git add .tempo CLAUDE.md && git commit -m \"tempo: init\"",
+    "",
+    `Your live board is written to ${join(paths.home, "board.md")}`,
+    "  — it auto-updates after every logged change; open it to watch your work.",
     "",
     "Register the MCP server with Claude Code (run from this repo):",
     "  claude mcp add tempo -- npx -y @milkyway-666/tempo mcp",
     "",
-    `Behavior + rituals were copied to ${join(paths.home, "assets")}`,
-    "  • assets/CLAUDE.md — add to your Claude Code memory",
-    "  • assets/skills/rituals — the plan/standup/review/interrupt flows",
+    ritualLine(paths, link),
+    "  Claude Code auto-loads it, so the narrate-and-record rituals take effect in this repo.",
+    "  The @import stays in sync when Tempo updates the rituals.",
     "",
   ].join("\n");
 }
@@ -55,8 +72,10 @@ function doInit(): void {
   writeConfigIfAbsent(paths);
   writeStoreVersion(paths);
   copyAssets(paths);
+  new Engine(paths).renderBoard(); // seed an (empty) board.md so the file exists
+  const link = ensureRitualsLinked(paths); // wire the rituals into repo-root CLAUDE.md memory
   process.stdout.write(
-    `Tempo initialized at ${paths.home} (store v${STORE_VERSION})` + "\n" + nextSteps(paths),
+    `Tempo initialized at ${paths.home} (store v${STORE_VERSION})` + "\n" + nextSteps(paths, link),
   );
 }
 
@@ -86,6 +105,7 @@ function doMigrate(): void {
 
   // Bring the copied data up to the current store format, reporting each step.
   const upgrade = upgradeStore(paths, { stamp: stampNow() });
+  new Engine(paths).renderBoard(); // render board.md from the migrated log
   const upgradeLines =
     upgrade.applied.length === 0
       ? [`Store is at v${upgrade.to}; no format changes were needed.`]
@@ -95,13 +115,14 @@ function doMigrate(): void {
           ...(upgrade.backup ? [`Pre-migration snapshot saved to ${upgrade.backup}`] : []),
         ];
 
+  const link = ensureRitualsLinked(paths); // wire the rituals into repo-root CLAUDE.md memory
   process.stdout.write(
     `Migrated your Tempo store from ${src} → ${paths.home}` +
       "\n" +
       upgradeLines.join("\n") +
       "\n\nThe old ~/.tempo was left untouched; delete it once you've verified the migration." +
       "\n" +
-      nextSteps(paths),
+      nextSteps(paths, link),
   );
 }
 
@@ -119,7 +140,14 @@ if (cmd === "init") {
   doMigrate();
 } else if (cmd === "check") {
   const e = new Engine();
-  const out = { storeVersion: readStoreVersion(e.paths), ...e.check() };
+  const linked = ritualsLinked(e.paths);
+  const rituals = linked
+    ? { memoryLinked: true }
+    : {
+        memoryLinked: false,
+        warning: `rituals not in Claude Code memory — add "@${ritualsImportPath(e.paths)}" to ${rootClaudeMd(e.paths)} (or re-run \`tempo init\`).`,
+      };
+  const out = { storeVersion: readStoreVersion(e.paths), rituals, ...e.check() };
   process.stdout.write(JSON.stringify(out, null, 2) + "\n");
 } else if (cmd === "mcp") {
   startMcp().catch((err) => {
