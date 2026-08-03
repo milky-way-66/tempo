@@ -2,6 +2,10 @@
 
 All notable changes to Tempo, newest first.
 
+## 0.1.5 — 2026-08-03
+
+- Split board into visual board.html + text-only agent-board.md (3a29799)
+
 ## 0.1.4 — 2026-08-03
 
 - Enrich board (WBS + metrics) and quantify priority as 1–5 axes (75dd9ea)
