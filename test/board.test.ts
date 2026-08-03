@@ -137,6 +137,8 @@ describe("board.html — visual", () => {
     expect(html).toContain('"name":"Ship it"'); // readable title, not the slug
     expect(html).toContain('"progress":'); // planned bar with % logged
     expect(html).toContain("cat-A"); // category color class
+    // custom_class must be a single token — Frappe's classList.add rejects spaces
+    expect(html).not.toMatch(/"custom_class":"[^"]* [^"]*"/);
   });
 
   it("shows value KPIs in the metrics section", () => {

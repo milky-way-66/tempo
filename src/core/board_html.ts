@@ -308,7 +308,7 @@ function gantt(p: Projection, config: Config, nowISO: string, project?: string):
       start: fmtG(pStart),
       end: fmtG(pEnd),
       progress,
-      custom_class: `cat-${c.k} st-${t.status}${over ? " overdue" : ""}`,
+      custom_class: `cat-${c.k}${over ? "-od" : ""}`, // single token — Frappe classList.add rejects spaces
       _details:
         `${esc(t.title)} · ${c.k} ${c.label}` +
         `<br/>${t.status}${t.project ? " · " + esc(t.project) : ""}` +
@@ -317,6 +317,10 @@ function gantt(p: Projection, config: Config, nowISO: string, project?: string):
         (t.deadline ? `<br/>deadline ${t.deadline}${over ? ` ${ic("exclamation-triangle")} overdue` : ""}` : ""),
     };
   });
+
+  // Scroll the initial view to the earliest task so bars are on-screen (start
+  // strings sort chronologically). Fall back to today.
+  const scrollTo = tasks.length ? tasks.map((t) => t.start).sort()[0].slice(0, 10) : "today";
 
   return `
   <section class="panel">
@@ -330,26 +334,28 @@ function gantt(p: Projection, config: Config, nowISO: string, project?: string):
       if(!el) return;
       if(typeof Gantt === 'undefined'){ el.innerHTML = '<p class="sub">Gantt library failed to load (needs a connection).</p>'; return; }
       var detail = {}; tasks.forEach(function(t){ detail[t.id] = t._details; });
-      new Gantt(el, tasks, {
-        view_mode: 'Day',
-        view_mode_select: true,
-        today_button: true,
-        scroll_to: 'today',
-        readonly: true,
-        popup_on: 'hover',
-        bar_height: 26,
-        padding: 16,
-        show_expected_progress: true,
-        holidays: { 'var(--g-weekend-highlight-color)': 'weekend' },
-        popup: function(ctx){
-          try {
-            var id = (ctx && ctx.task && ctx.task.id) || (ctx && ctx.id);
-            var html = detail[id];
-            if (ctx && ctx.set_title) { ctx.set_title(''); ctx.set_details(html); return; }
-            return html;
-          } catch(e){ return; }
-        }
-      });
+      try {
+        new Gantt(el, tasks, {
+          view_mode: 'Week',
+          view_mode_select: true,
+          today_button: true,
+          scroll_to: ${JSON.stringify(scrollTo)},
+          readonly: true,
+          popup_on: 'hover',
+          bar_height: 26,
+          padding: 18,
+          show_expected_progress: true,
+          holidays: { 'var(--g-weekend-highlight-color)': 'weekend' },
+          popup: function(ctx){
+            try {
+              var id = (ctx && ctx.task && ctx.task.id) || (ctx && ctx.id);
+              var html = detail[id];
+              if (ctx && ctx.set_title) { ctx.set_title(''); ctx.set_details(html); return; }
+              return html;
+            } catch(e){ return; }
+          }
+        });
+      } catch(err){ el.innerHTML = '<p class="sub">Could not render the timeline: ' + (err && err.message ? err.message : err) + '</p>'; }
     })();
     </script>
   </section>`;
@@ -542,12 +548,18 @@ header h1{margin:0 0 10px;font-size:26px;font-weight:600;letter-spacing:-0.02em}
   --g-expected-progress:var(--faint);--g-today-highlight:var(--faint);
   --g-weekend-highlight-color:rgba(0,0,0,0.035);--g-actions-background:var(--panel);--g-popup-actions:var(--muted)}
 @media (prefers-color-scheme:dark){.gantt-wrap{--g-weekend-highlight-color:rgba(255,255,255,0.035)}}
-.gantt-wrap .bar{fill:var(--g-bar-color);stroke:var(--g-bar-border)}
-.gantt-wrap .bar-wrapper.cat-A .bar-progress{fill:#c96a6a}
-.gantt-wrap .bar-wrapper.cat-B .bar-progress{fill:#5a9b7d}
-.gantt-wrap .bar-wrapper.cat-C .bar-progress{fill:#c2a15c}
-.gantt-wrap .bar-wrapper.cat-D .bar-progress{fill:#9aa1a9}
-.gantt-wrap .bar-wrapper.overdue .bar{stroke:#c96a6a;stroke-width:1.5px}
+/* Each bar = a faint category-tinted track (visible even at 0% progress) with a
+   solid category fill for the logged %. */
+.gantt-wrap .bar{stroke-width:1px}
+.gantt-wrap .bar-wrapper[class*="cat-A"] .bar{fill:#c96a6a;fill-opacity:.16;stroke:#c96a6a;stroke-opacity:.55}
+.gantt-wrap .bar-wrapper[class*="cat-A"] .bar-progress{fill:#c96a6a}
+.gantt-wrap .bar-wrapper[class*="cat-B"] .bar{fill:#5a9b7d;fill-opacity:.16;stroke:#5a9b7d;stroke-opacity:.55}
+.gantt-wrap .bar-wrapper[class*="cat-B"] .bar-progress{fill:#5a9b7d}
+.gantt-wrap .bar-wrapper[class*="cat-C"] .bar{fill:#c2a15c;fill-opacity:.16;stroke:#c2a15c;stroke-opacity:.55}
+.gantt-wrap .bar-wrapper[class*="cat-C"] .bar-progress{fill:#c2a15c}
+.gantt-wrap .bar-wrapper[class*="cat-D"] .bar{fill:#9aa1a9;fill-opacity:.2;stroke:#9aa1a9;stroke-opacity:.55}
+.gantt-wrap .bar-wrapper[class*="cat-D"] .bar-progress{fill:#9aa1a9}
+.gantt-wrap .bar-wrapper[class*="-od"] .bar{stroke:#c96a6a;stroke-width:1.75px;stroke-opacity:1}
 .gantt-wrap .bar-label{fill:var(--ink);font-size:12px}
 .gantt-wrap .bar-label.big{fill:var(--muted)}
 .stats{display:flex;flex-wrap:wrap;gap:40px;margin:22px 0 6px}
