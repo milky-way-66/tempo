@@ -3,7 +3,10 @@ import { mkdtempSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Engine } from "../src/core/engine";
-import type { Paths } from "../src/core/config";
+import { metricsMarkdown } from "../src/core/report";
+import { replay } from "../src/core/replay";
+import { ConfigSchema, type Paths } from "../src/core/config";
+import type { Event } from "../src/types";
 
 function tmpStore(): Paths {
   const home = mkdtempSync(join(tmpdir(), "tempo-board-"));
@@ -47,5 +50,44 @@ describe("board.md", () => {
     expect(md).toContain("# Tempo Board");
     expect(md).toContain("**0** tasks");
     expect(md).toMatch(/\| ---/); // table separator present
+    expect(md).toContain("## Metrics");
+    expect(md).toContain("No time logged yet");
+  });
+});
+
+describe("board metrics", () => {
+  // Deterministic: fixed UTC "now" and past spans so window math isn't flaky.
+  const config = ConfigSchema.parse({ timezone: "UTC" });
+  const now = "2026-08-05T17:00:00Z"; // a Wednesday afternoon
+
+  const ev = (o: Partial<Event> & { id: string; at: string; type: Event["type"] }) =>
+    ({ logged_at: o.at, source: "live", ...o }) as Event;
+
+  const events: Event[] = [
+    ev({ id: "c1", at: "2026-08-05T09:00:00Z", type: "task.created", task: "api-work", title: "API work", imp: "high", tags: [], project: "api", estMin: 120 } as Partial<Event> as never),
+    ev({ id: "s1", at: "2026-08-05T09:00:00Z", type: "task.started", task: "api-work" } as never),
+    ev({ id: "e1", at: "2026-08-05T11:00:00Z", type: "task.stopped", task: "api-work", status: "done" } as never),
+    ev({ id: "c2", at: "2026-08-05T13:00:00Z", type: "task.created", task: "docs", title: "Docs", imp: "low", tags: [], project: "docs" } as never),
+    ev({ id: "s2", at: "2026-08-05T13:00:00Z", type: "task.started", task: "docs" } as never),
+    ev({ id: "e2", at: "2026-08-05T14:00:00Z", type: "task.stopped", task: "docs", status: "done" } as never),
+  ];
+
+  it("renders totals, distribution by project and quadrant, and estimates", () => {
+    const p = replay(events);
+    const md = metricsMarkdown(p, config, now);
+
+    expect(md).toContain("## Metrics");
+    // totals: 3h gross across the week
+    expect(md).toContain("Time by project");
+    expect(md).toContain("api");
+    expect(md).toContain("docs");
+    expect(md).toContain("█"); // share bar rendered
+    // quadrant split: api-work is important-not-urgent (Q2), docs is Q4
+    expect(md).toContain("Time by quadrant");
+    expect(md).toContain("Q2");
+    expect(md).toContain("Q4");
+    // estimate vs actual for the done, estimated task
+    expect(md).toContain("Estimates vs actual");
+    expect(md).toContain("api-work");
   });
 });

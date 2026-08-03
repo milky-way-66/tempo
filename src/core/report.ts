@@ -52,15 +52,31 @@ const COL_TITLES: Record<(typeof COLS)[number], string> = {
 // Always show these; paused/blocked are shown only when they hold something.
 const CORE_COLS = new Set<(typeof COLS)[number]>(["todo", "doing", "done"]);
 
+/** Escape Markdown table-cell delimiters. */
+const esc = (s: string) => s.replace(/\|/g, "\\|");
+
+/** A fixed-width unicode meter for a 0–100 percentage. */
+function bar(pct: number, width = 10): string {
+  const filled = Math.max(0, Math.min(width, Math.round((pct / 100) * width)));
+  return "█".repeat(filled) + "░".repeat(width - filled);
+}
+
+const QUADRANT_LABELS: Record<string, string> = {
+  Q1: "Q1 · urgent + important",
+  Q2: "Q2 · important",
+  Q3: "Q3 · urgent",
+  Q4: "Q4 · neither",
+};
+
 /**
- * Render the board as a GitHub-flavored Markdown kanban grid: one column per
- * status, tasks stacked down each column. Regenerated after every event so the
- * `.tempo/board.md` file is always a live view of the current state.
+ * Render the board as a GitHub-flavored Markdown kanban grid plus a metrics
+ * dashboard (time totals, distribution by project and quadrant, sprint plan,
+ * estimates). Regenerated after every event so the `.tempo/board.md` file is
+ * always a live view of the current state.
  */
 export function boardMarkdown(p: Projection, config: Config, nowISO: string, project?: string): string {
   const cols = board(p, project);
   const shown = COLS.filter((c) => CORE_COLS.has(c) || cols[c].length > 0);
-  const esc = (s: string) => s.replace(/\|/g, "\\|");
 
   const cell = (it: BoardItem): string => {
     const t = p.tasks.get(it.id)!;
@@ -89,8 +105,87 @@ export function boardMarkdown(p: Projection, config: Config, nowISO: string, pro
   lines.push(`> **${total}** task${total === 1 ? "" : "s"} · **${doing}** in progress · updated ${generated}`);
   if (project) lines.push(">", `> project: **${esc(project)}**`);
   lines.push("", header, sep, ...bodyRows, "");
-  lines.push("_⚑ important · ⏰ deadline — auto-generated after each change; do not edit by hand._");
-  return lines.join("\n") + "\n";
+  lines.push("_⚑ important · ⏰ deadline — auto-generated after each change; do not edit by hand._", "");
+  lines.push(metricsMarkdown(p, config, nowISO));
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
+}
+
+/** A distribution table (project or quadrant) with share bars. */
+function distributionTable(
+  header: string,
+  rows: [string, number][],
+  totalMin: number,
+  relabel: (k: string) => string,
+): string[] {
+  if (rows.length === 0) return [];
+  const out = [`### ${header}`, "", "| | Time | Share |", "| --- | ---: | :--- |"];
+  for (const [k, v] of rows) {
+    const pct = totalMin > 0 ? Math.round((v / totalMin) * 100) : 0;
+    out.push(`| ${esc(relabel(k))} | ${formatMin(v)} | \`${bar(pct)}\` ${pct}% |`);
+  }
+  out.push("");
+  return out;
+}
+
+/**
+ * The metrics dashboard appended below the kanban: today/this-week totals,
+ * time distribution by project and by Eisenhower quadrant, an open-sprint plan
+ * check, and estimate-vs-actual for tasks finished in the window.
+ */
+export function metricsMarkdown(p: Projection, config: Config, nowISO: string): string {
+  const today = report(p, config, nowISO, { window: "today", by: "project" });
+  const week = report(p, config, nowISO, { window: "week", by: "project" });
+  const weekByQuadrant = report(p, config, nowISO, { window: "week", by: "quadrant" });
+  const open = [...p.periods.values()].find((pr) => pr.open);
+  const sprint = open ? report(p, config, nowISO, { window: "sprint", by: "project" }) : null;
+
+  const lines: string[] = ["## Metrics", ""];
+
+  if (week.grossMin === 0 && today.grossMin === 0) {
+    lines.push("_No time logged yet — start a task and it'll show up here._", "");
+    return lines.join("\n");
+  }
+
+  lines.push(
+    `- **Today:** net ${formatMin(today.netMin)} worked · gross ${formatMin(today.grossMin)}`,
+    `- **${cap(week.win.label)}:** net ${formatMin(week.netMin)} · gross ${formatMin(week.grossMin)} ` +
+      `(×${week.multitaskFactor.toFixed(2)} multitask) · ${week.interruptions} interruption${week.interruptions === 1 ? "" : "s"}`,
+    "",
+  );
+
+  lines.push(...distributionTable(`Time by project — ${week.win.label}`, week.distribution, week.grossMin, (k) => k));
+  lines.push(
+    ...distributionTable(
+      `Time by quadrant — ${week.win.label}`,
+      weekByQuadrant.distribution,
+      weekByQuadrant.grossMin,
+      (k) => QUADRANT_LABELS[k] ?? k,
+    ),
+  );
+
+  if (sprint?.onTrack) {
+    lines.push(
+      `### Sprint ${esc(open!.id)}`,
+      "",
+      `- ${formatMin(sprint.onTrack.remainingMin)} remaining vs ${formatMin(sprint.onTrack.capacityMin)} capacity → **${sprint.onTrack.verdict}**`,
+      "",
+    );
+  }
+
+  if (week.eva.length) {
+    lines.push(`### Estimates vs actual — ${week.win.label}`, "", "| Task | Actual | Est | Verdict |", "| --- | ---: | ---: | :--- |");
+    for (const e of week.eva) {
+      const verdict = Math.abs(e.ratio - 1) <= 0.1 ? "on target" : `${e.ratio.toFixed(1)}× estimate`;
+      lines.push(`| \`${esc(e.id)}\` | ${formatMin(e.actual)} | ${formatMin(e.est)} | ${verdict} |`);
+    }
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
+function cap(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 // ---- reports ----
