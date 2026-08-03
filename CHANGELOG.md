@@ -2,6 +2,10 @@
 
 All notable changes to Tempo, newest first.
 
+## 0.1.7 — 2026-08-03
+
+- Binary priority categories, calendar Gantt, and append-only archive (c4b23f1)
+
 ## 0.1.6 — 2026-08-03
 
 - board.html: Gantt calendar timeline, section reorder, centered priority map (35f7438)
