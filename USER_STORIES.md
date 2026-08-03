@@ -289,6 +289,30 @@ that** I can tell whether I'm drifting into reactive mode.
 - Q2 (important/not-urgent) and Q3 (urgent/not-important) are called out by name — this is the
   intent-vs-reality measure the tool exists to produce.
 
+### C5 — Weekly review: where did my time actually go?
+**As an** Analyst, **I want** to sit down at the end of the week and see how my time was
+*distributed* — across projects, tags/categories, and value (high-value vs low-value / firefighting)
+— **so that** I can judge whether the week was effective or whether too much went to low-value work,
+and adjust next week.
+
+> The user's fourth story: *"After each week I want to sit down, look at what I did, analyze it, and
+> see how my work was laid out — was it effective, or did I spend too much time on low-value work? I
+> want to see how my work time was distributed."* This is **reflection**, not live status: the
+> behavior-changing report the whole tool exists to produce.
+
+**Acceptance**
+- `kaban report --week` shows total tracked time broken down by at least: **project**, **tag/
+  category** (bug / feature / meeting / review / …), and **Eisenhower quadrant** — each as hours and
+  as a percentage of the week.
+- It surfaces the **value verdict** explicitly: how much time went to Q2 (important/not-urgent,
+  high-value) vs Q3 (urgent/not-important, firefighting/low-value), and how that compares to the
+  prior week (e.g. `Q2 11% vs 25% last week → drifting reactive`).
+- It highlights time concentrations worth questioning — e.g. the single tag or task that consumed
+  the most time, and time spent on tasks that ran well over estimate.
+- Distribution is computed only from events (sorted by `at`), and is reproducible run-to-run.
+- Presentation is text by default; a richer visual (chart / HTML artifact) is an optional later
+  add-on, not required for the story.
+
 ---
 
 ## Epic D — Trust the log (data quality)
