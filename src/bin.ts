@@ -7,11 +7,17 @@ import { Engine } from "./core/engine.js";
 import { buildServer } from "./server.js";
 import { initStore } from "./core/git.js";
 import { initPaths, globalHome, defaultConfig, type Paths } from "./core/config.js";
-import { STORE_VERSION, writeStoreVersion, upgradeStore, readStoreVersion } from "./core/version.js";
+import { STORE_VERSION, writeStoreVersion, readStoreVersion } from "./core/version.js";
+import { upgradeStore } from "./core/migrate.js";
 
 function packageRoot(): string {
   // Bundled to dist/bin.js → package root is one level up (assets/ ships alongside dist/).
   return join(dirname(fileURLToPath(import.meta.url)), "..");
+}
+
+/** Filesystem-safe timestamp for backup dir names, e.g. 20260803-115700. */
+function stampNow(): string {
+  return new Date().toISOString().replace(/[-:T]/g, "").replace(/\..+$/, "").replace(/(\d{8})(\d{6})/, "$1-$2");
 }
 
 function writeConfigIfAbsent(paths: Paths): void {
@@ -79,11 +85,15 @@ function doMigrate(): void {
   copyAssets(paths);
 
   // Bring the copied data up to the current store format, reporting each step.
-  const upgrade = upgradeStore(paths);
+  const upgrade = upgradeStore(paths, { stamp: stampNow() });
   const upgradeLines =
-    upgrade.steps.length === 0
+    upgrade.applied.length === 0
       ? [`Store is at v${upgrade.to}; no format changes were needed.`]
-      : [`Upgraded store v${upgrade.from} → v${upgrade.to}:`, ...upgrade.steps.map((s) => `  • ${s}`)];
+      : [
+          `Upgraded store v${upgrade.from} → v${upgrade.to}:`,
+          ...upgrade.applied.map((s) => `  • v${s.from} → v${s.to}: ${s.describe}`),
+          ...(upgrade.backup ? [`Pre-migration snapshot saved to ${upgrade.backup}`] : []),
+        ];
 
   process.stdout.write(
     `Migrated your Tempo store from ${src} → ${paths.home}` +

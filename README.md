@@ -72,6 +72,26 @@ order and duplicates never corrupt the numbers.
 the current version, reporting each step; `tempo check` prints the current `storeVersion`. Override
 the store location with `TEMPO_HOME`.
 
+### Store versioning & migrations
+
+The store carries a format version in `.tempo/version` (`STORE_VERSION` in `src/core/version.ts`).
+Upgrades are a chain of **single-step migrations**, one per version, kept in
+[`src/core/migrations/`](src/core/migrations/). `upgradeStore` reads the store's own version and runs
+every step from there up to the current version **in order**, so a user two versions behind runs both
+steps sequentially. It is safe by construction:
+
+- **Sequential & contiguous** — steps go `vN → vN+1`; a gap in the chain aborts rather than skipping a
+  transform.
+- **Backed up** — the pre-migration `events.jsonl`/`config.json` are copied to `.tempo/backups/…`
+  before anything is rewritten.
+- **Resumable** — `.tempo/version` is advanced after each successful step, so an interrupted run
+  continues from the last completed version.
+- **Forward-safe** — a store newer than the running Tempo refuses to migrate and tells you to update.
+
+To add a format version: drop a `NNN-*.ts` file in `src/core/migrations/` exporting a
+`defineMigration({ from, to, describe, apply })`, register it in `migrations/index.ts`, and bump
+`STORE_VERSION`. See the worked example in `migrations/index.ts`.
+
 ## Development
 
 ```bash
