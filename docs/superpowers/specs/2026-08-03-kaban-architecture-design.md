@@ -57,9 +57,14 @@ readers sort by `at`.
 | `period.opened` | `period`, `start`, `end` |
 | `period.closed` | `period` |
 
-Derived, never stored: time spent (sum of started→stopped spans), board column, interruption count
-(starts-while-another-active), plan burndown, quadrant. `estimate.revised` and a focus *stack* with
-auto-resume are **deferred** — nesting is still recoverable from timestamps.
+A **task is the universal unit of work** — coding, an estimate, a meeting, a review — distinguished
+only by its `tags`; there is no separate event type per activity kind. **Multitasking is
+first-class:** several tasks can be active at once; a task accrues **many spans** over its life and
+its time is their sum.
+
+Derived, never stored: time spent (sum of a task's spans; **gross** per-task vs **net** wall-clock),
+board column, interruption count (starts carrying a `reason`), plan burndown, quadrant.
+`estimate.revised` and an auto-resume focus *stack* are **deferred**.
 
 ## Tool surface (~10)
 

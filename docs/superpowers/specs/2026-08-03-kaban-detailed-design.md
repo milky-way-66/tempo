@@ -9,12 +9,17 @@
 
 | # | Question | Decision | Rationale |
 |---|---|---|---|
-| 1 | Task identity | **Human slug id + fuzzy resolution** | Readable log/diffs; natural for chat; server disambiguates when unsure. |
+| 1 | Task identity | **Human slug id + fuzzy resolution; tags on every task** | Readable log/diffs; natural for chat; server disambiguates when unsure. `tags` (bug/feature/meeting/…) are first-class on every task and slice reports. |
 | 2 | WBS link | **`parent` field on `task.created`** | Simplest; re-parenting is a rare correction, handled by a later `task.created`-style amend if ever needed. |
-| 3 | Time attribution | **Span model: `started`→next `stopped`** | Deterministic, order-independent after sort; overlaps only from backfill → flagged by `check`. |
+| 3 | Time attribution | **Concurrent span model — multitasking allowed** | Tasks accrue time from each `started` to its `stopped`; several may run at once; overlap is normal. Report **gross** (per-task) and **net** (wall-clock union). |
 | 4 | Multi-machine merge | **`events.jsonl merge=union` + dedup by event `id`** | Append-only unions cleanly; replay dedups and sorts, so order/dupes never corrupt numbers. |
-| 5 | Capacity | **Fixed `capacityHoursPerDay` in config** (learned later) | Enough for `report`/what-if; no cold-start dependency. |
-| 6 | Name | **"kaban" = working codename** | Revisit before publish; package name TBD (e.g. `@you/kaban`). |
+| 5 | Capacity | **`capacityHoursPerDay: 8` in config, optional per-period override** (learned later) | You work an 8h day. Drives `report`/what-if; no cold-start. |
+| 6 | Name | **Placeholder — undecided** | "kaban" is a codename; see candidates in §16. |
+
+> **What a "task" is:** the *universal unit of work* — coding, an estimate, a meeting, a review,
+> admin, anything you spend time on. There is **no** separate event type per activity kind; the kind
+> is a **tag** (`bug`, `meeting`, `review`, …). This keeps the schema tiny and the tags do the
+> slicing. `log` (backfill) and a live `start` both just create a task.
 
 ---
 
@@ -78,12 +83,13 @@ interface Base {
 
 type Event =
   | Base & { type: "task.created"; task: string; title: string; imp: Importance;
-             project?: string; tags?: string[]; estMin?: number;
+             tags: string[];                    // always present; ≥1 category tag encouraged
+             project?: string; estMin?: number;
              deadline?: string; parent?: string; period?: string }
-  | Base & { type: "task.started"; task: string; reason?: Reason }   // reason only when interrupting
+  | Base & { type: "task.started"; task: string; reason?: Reason }   // reason set when this start IS an interruption (the urgent thing switched to)
   | Base & { type: "task.stopped"; task: string; status: StopStatus; reason?: string }
   | Base & { type: "note";         task?: string; text: string; energy?: "hard" | "easy" }
-  | Base & { type: "period.opened"; period: string; start: string; end: string }
+  | Base & { type: "period.opened"; period: string; start: string; end: string; capacityHoursPerDay?: number }
   | Base & { type: "period.closed"; period: string };
 ```
 
@@ -94,9 +100,14 @@ Slug is stable once minted (renames change `title`, never `task`).
 ```jsonl
 {"id":"a1","type":"task.created","task":"auth-bug","title":"Auth bug","imp":"high","project":"api","tags":["bug"],"estMin":120,"at":"2026-08-03T09:12+07:00","logged_at":"2026-08-03T09:12+07:00","source":"live"}
 {"id":"a2","type":"task.started","task":"auth-bug","at":"2026-08-03T09:13+07:00","logged_at":"2026-08-03T09:13+07:00","source":"live"}
-{"id":"a3","type":"task.started","task":"prod-hotfix","reason":"urgent","at":"2026-08-03T10:40+07:00","logged_at":"2026-08-03T10:40+07:00","source":"live"}
-{"id":"a4","type":"task.stopped","task":"prod-hotfix","status":"done","at":"2026-08-03T11:25+07:00","logged_at":"2026-08-03T11:25+07:00","source":"live"}
+{"id":"a3","type":"task.stopped","task":"auth-bug","status":"paused","at":"2026-08-03T10:40+07:00","logged_at":"2026-08-03T10:40+07:00","source":"live"}
+{"id":"a4","type":"task.created","task":"prod-hotfix","title":"Prod hotfix","imp":"high","tags":["bug"],"at":"2026-08-03T10:40+07:00","logged_at":"2026-08-03T10:40+07:00","source":"live"}
+{"id":"a5","type":"task.started","task":"prod-hotfix","reason":"urgent","at":"2026-08-03T10:40+07:00","logged_at":"2026-08-03T10:40+07:00","source":"live"}
+{"id":"a6","type":"task.stopped","task":"prod-hotfix","status":"done","at":"2026-08-03T11:25+07:00","logged_at":"2026-08-03T11:25+07:00","source":"live"}
+{"id":"a7","type":"task.started","task":"auth-bug","at":"2026-08-03T11:26+07:00","logged_at":"2026-08-03T11:26+07:00","source":"live"}
 ```
+Auth-bug now has two spans (09:13–10:40 = 87m, plus 11:26–…); prod-hotfix is a 45m `urgent` firefight.
+`estMin` stores parsed minutes (`"2h"` → 120).
 
 ## 4. Projection model
 
@@ -117,30 +128,44 @@ interface Projection { tasks: Map<string,Task>; periods: Map<string,Period>; act
 
 ## 5. Time-attribution algorithm (the load-bearing one)
 
+A task is worked in **many short sessions**, not one sitting — interruptions are the norm. So a task
+holds a **list of spans**, and its time is the **sum of all of them across its whole life**; one
+`started`→`stopped` pair is just *one* span. Two ways to add a span:
+
+- **Live:** `start` opens a span, `stop` closes it. Resuming later = another `start` = another span.
+- **Direct duration:** `log --dur 45m --at …` appends a closed span when you didn't track live
+  (a meeting, or "I spent ~2h on this"). Same shape, `source:"backfill"`.
+
+Multitasking is first-class: **several tasks can hold an open span at once.** `start` never pauses
+another task; a *real* switch is Claude issuing `stop`(paused) then `start`.
+
 ```
-sort events by (at, logged_at, id)          // total order; merge dupes removed by id
-active = null
+sort events by (at, logged_at, id)               // total order; id-dupes from merges dropped
 for e in events:
-  task.created  -> create Task (status=todo)
-  task.started(T):
-     if active && active != T:
-        closeOpenSpan(active, e.at); tasks[active].status = "paused"
-        if e.reason: tasks[active].interruptions += 1     // A was interrupted
-     openSpan(T, e.at); tasks[T].status = "doing"; active = T
-  task.stopped(T, status):
-     closeOpenSpan(T, e.at)
-     tasks[T].status = (status=="done") ? "done" : status   // paused | blocked
-     if active == T: active = null
-  note / period.* -> update side state
-actualMin(T) = Σ (span.end - span.start) over closed spans   // open span counts to "now" in live views
+  task.created(T)   -> create Task (status = todo, spans = [])
+  task.started(T)   -> if T has no open span: openSpan(T, e.at)
+                       status[T] = doing
+                       if e.reason: interruptions += 1        // period-level; T is the firefight
+  task.stopped(T,s) -> closeOpenSpan(T, e.at)
+                       status[T] = (s == "done") ? done : s   // paused | blocked
+  note / period.*   -> side state
+
+grossMin(T) = Σ (span.end − span.start) over T's spans   // per-task; open span counts to "now" live
+netMin      = length of the UNION of all spans           // real wall-clock (overlap counted once)
 ```
 
-- **Order-independent:** sorting first makes replay deterministic regardless of on-disk order or
-  backfill — satisfies reproducibility.
-- **No live overlaps:** starting a task auto-closes the previous span. Overlaps arise only from
-  backfill (e.g. a meeting logged inside an unclosed span) → **detected by `check`, accepted as-is**
-  (correction = new event).
-- **Board column** = task.status; `todo` = created, never started.
+- **Interruptions = many spans, summed.** A task hit 6 times in a day has 6 spans; its time is their
+  sum. Keeping every span is exactly why one start/stop per session is enough.
+- **Gross vs net:** because you multitask, Σ`grossMin` over tasks can exceed the clock; `netMin` is
+  the honest wall-clock. **Attribution/distribution use gross; capacity/utilization use net.**
+  `multitaskFactor = Σgross / netMin`.
+- **Interruption vs multitask (Claude reads your words):** "switch to the hotfix" ⇒ `stop`(paused) +
+  `start` (reason=urgent on the new task); "also on X now" ⇒ just `start` X alongside — both stay open.
+- **Non-working states accrue nothing:** `todo` (created, never started), `paused`, `blocked`.
+- **Order-independent:** sorting first makes replay deterministic regardless of on-disk order/backfill.
+- **Board:** `doing` if any open span, else `paused`/`blocked`/`done`/`todo` from the last event.
+- **Overlaps are normal** (multitasking), so `check` does **not** flag them; it flags only *impossible*
+  states — a `stop` with no open span, or a second `start` while already open.
 
 ## 6. Fuzzy task resolution (`core/resolve.ts`)
 
@@ -168,7 +193,7 @@ return structured JSON. `verdict` strings are computed, never model-authored.
 | Tool | Key params | Behavior / returns |
 |---|---|---|
 | `add` | `title`*, `imp`*, `project?`, `tags?`, `est?`, `deadline?`, `parent?`, `period?` | Define a task, unstarted (planning/WBS). → `{task}` |
-| `start` | `query?`\|`title?`, plus create fields, `reason?`, `at?` | Resolve; create-if-new; if another active, interrupt it. → `{task, interrupted?}` or `{needsDisambiguation}` |
+| `start` | `query?`\|`title?`, plus create fields, `reason?`, `at?` | Resolve; create-if-new; open a span (other active tasks keep running — multitasking). → `{task}` or `{needsDisambiguation}`. A real *switch* = `stop`(paused) then `start`. |
 | `stop` | `query?` (default active), `status?`=done, `reason?`, `at?` | Close active span. → `{task, actual:"1h50m", est?:"2h", verdict}` |
 | `note` | `text`*, `query?` (default active), `energy?`, `at?` | Attach note. → `{ok}` |
 | `log` | `title?`\|`query?`, `dur`*, `at`*, create fields | Past finished activity → expands to started+stopped. → `{task, logged}` |
@@ -187,7 +212,7 @@ Task creation during planning reuses `add` (with `period`, `parent`, `est`).
 |---|---|---|
 | `board` | `project?` | Columns todo/doing/paused/blocked/done. |
 | `report` | `window`=today\|week\|sprint, `by?`=project\|tag\|quadrant, `adding?`=est | Totals, est-vs-actual, interruptions, distribution %, **on-track verdict**; `adding` runs the interruption what-if. |
-| `check` | — | `{issues:[…], quality:{backfillPct, freshness}}` — schema, sort, overlaps. |
+| `check` | — | `{issues:[…], quality:{backfillPct, freshness, multitaskFactor}}` — schema, sort, and *impossible* states (stop w/o open span, double-start). Overlaps are normal (multitasking), not errors. |
 
 ## 8. Reports detail
 
@@ -200,11 +225,14 @@ Task creation during planning reuses `add` (with `period`, `parent`, `est`).
 - **urgency (derived):** function of `deadline − now`, decaying toward "urgent" as it nears; tasks
   auto-place, never re-classified.
 - **est-vs-actual verdict:** `on target` within ±10%, else `N×` (e.g. `1.5× estimate`).
+- **gross vs net:** report headers show **net** wall-clock hours + `multitaskFactor`; per-task and
+  per-dimension figures are **gross** (attributed). Capacity and the on-track verdict use **net**
+  against `capacityHoursPerDay` (8h).
 
 ## 9. Config (`~/.kaban/config.json`)
 
 ```json
-{ "timezone": "Asia/Ho_Chi_Minh", "capacityHoursPerDay": 5, "workDays": ["mon","tue","wed","thu","fri"] }
+{ "timezone": "Asia/Ho_Chi_Minh", "capacityHoursPerDay": 8, "workDays": ["mon","tue","wed","thu","fri"] }
 ```
 `timezone` fills the offset when loose time lacks one; `capacityHoursPerDay` drives plan math.
 
@@ -270,3 +298,21 @@ serve numbers and point at `check` (never silently wrong).
 
 Estimator/forecast, ripple-diff, git-commit gap corroboration, auto-resume focus stack,
 `estimate.revised`, `kaban sync`, SQLite read-cache.
+
+## 16. Name candidates
+
+"kaban" is a placeholder. The name is also the command you type (`npx @you/<name> mcp`,
+`claude mcp add <name>`), so short + lowercase-friendly matters. Shortlist with rationale (check
+npm availability before publish; a scope like `@you/<name>` sidesteps collisions regardless):
+
+| Name | Why it fits |
+|---|---|
+| **Cadence** *(top pick)* | The tool measures your working *rhythm* — Q2-vs-Q3 drift, interruptions, throughput. Professional, memorable. |
+| **Reckon** | Honest *reckoning* of time, and reference-class estimates ("I reckon ~5h"). Ties to the estimator vision. Distinctive. |
+| **Tally** | It *tallies* time and estimates from events. Short, friendly, obvious verb. |
+| **Ledger** | An append-only *ledger* of work — matches event-sourcing exactly. |
+| **Stint** | A *stint* = one work session (a span). Quietly on-model; very short. |
+| **Loom** | *Weaves* a stream of events into a picture of your work. Short, evocative. |
+
+Recommendation: **Cadence** for the story it tells, **Reckon** if you want to foreground the
+honest-estimation angle. Decide before first publish; the codename `kaban` stays until then.
