@@ -8,7 +8,8 @@
   },
   "files": [
     "dist",
-    "assets"
+    "assets",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=20"
@@ -18,6 +19,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "changelog": "node scripts/changelog.mjs",
+    "version": "npm run changelog && git add CHANGELOG.md",
     "prepublishOnly": "npm run typecheck && npm test && npm run build",
     "deploy": "npm run deploy:patch",
     "deploy:patch": "npm version patch -m \"release: v%s\" && npm publish && git push --follow-tags",
