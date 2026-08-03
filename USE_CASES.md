@@ -1,4 +1,4 @@
-# Kaban — Use Cases
+# Tempo — Use Cases
 
 > Status: **draft.** Derived from [USER_STORIES.md](USER_STORIES.md). Each use case is a concrete
 > actor-goal flow that realizes one or more stories. These feed the app design next.
@@ -7,10 +7,10 @@
 ## Conventions
 
 - **Actor** — the human (Planner / Narrator / Analyst — all the same solo developer in different
-  modes). The **System** is the `kaban` CLI; **Claude** is the conversational front end that
-  translates the actor's words into `kaban` commands and relays the output.
+  modes). The **System** is the `tempo` CLI; **Claude** is the conversational front end that
+  translates the actor's words into `tempo` commands and relays the output.
 - **Interaction model (applies to every use case).** The actor speaks in natural language to Claude;
-  Claude picks and runs a `kaban` command; the System appends events and/or computes a view and
+  Claude picks and runs a `tempo` command; the System appends events and/or computes a view and
   prints text; Claude relays and interprets it. **Claude never reads or writes `log.jsonl` directly.**
 - Steps are written as `Actor → Claude → System` so the design can see exactly where each
   responsibility sits.
@@ -42,13 +42,13 @@
 
 **Main flow**
 1. Actor → Claude: "Let's plan this sprint, two weeks from Monday."
-2. Claude → System: `kaban plan open --sprint --from mon --len 2w` → appends `period.opened`.
+2. Claude → System: `tempo plan open --sprint --from mon --len 2w` → appends `period.opened`.
 3. Actor → Claude: brain-dumps the work ("ship auth, fix the billing bug, write Q3 doc…").
-4. Claude → System: for each item, `kaban add <task> --imp <…> --tag <…>` → `task.created` events.
+4. Claude → System: for each item, `tempo add <task> --imp <…> --tag <…>` → `task.created` events.
 5. Actor → Claude: breaks big items down ("auth = login API + token refresh + tests").
 6. Claude → System: creates child leaves linked to the parent (WBS) with `--est` on each leaf.
 7. Actor → Claude: "does that fit?"
-8. Claude → System: `kaban plan status` → System sums leaf estimates vs period capacity.
+8. Claude → System: `tempo plan status` → System sums leaf estimates vs period capacity.
 9. System → Claude → Actor: `committed 68h vs ~50h capacity → 18h over; 3 leaves at risk`.
 
 **Alternate flows**
@@ -74,22 +74,22 @@
 
 **Main flow (start → finish)**
 1. Actor → Claude: "starting the auth login API, about 2h."
-2. Claude → System: `kaban start login-api --est 2h` (attaches to the planned leaf if it exists;
+2. Claude → System: `tempo start login-api --est 2h` (attaches to the planned leaf if it exists;
    else creates it). Appends `task.started`.
 3. …work happens…
 4. Actor → Claude: "done."
-5. Claude → System: `kaban done` → appends `task.finished`.
+5. Claude → System: `tempo done` → appends `task.finished`.
 6. System → Claude → Actor: `login-api: 1h50m (est 2h, on target)`.
 
 **Alternate flows**
-- **Pause/resume:** "taking a break" → `kaban pause`; "back on it" → `kaban resume`.
-- **Blocked:** "can't continue, waiting on review" → `kaban block --reason waiting` (distinct from
+- **Pause/resume:** "taking a break" → `tempo pause`; "back on it" → `tempo resume`.
+- **Blocked:** "can't continue, waiting on review" → `tempo block --reason waiting` (distinct from
   pause: "can't" vs "chose not to").
 - **Nested interruption:** handled by UC-3; finishing the interrupter pops back automatically.
 
 **Exceptions**
 - **2e. Starting a second task without closing the first:** System auto-pushes the current task onto
-  the focus stack (treats it as a switch) rather than silently overlapping; `kaban check` would flag
+  the focus stack (treats it as a switch) rather than silently overlapping; `tempo check` would flag
   a true overlap.
 
 ---
@@ -105,14 +105,14 @@
 
 **Main flow**
 1. Actor → Claude: "boss wants a prod hotfix now, ~1h. What does that do to my sprint?"
-2. Claude → System: quick-check — `kaban plan impact --est 1h` (read-only): compares
+2. Claude → System: quick-check — `tempo plan impact --est 1h` (read-only): compares
    `remaining committed + 1h` vs `remaining capacity`.
 3. System → Claude → Actor: `+1h urgent → sprint now 4h over; "Q3 doc" (Q2) likely slips`.
 4. Actor decides.
-5a. **Accept:** Claude → System: `kaban switch prod-hotfix --reason urgent --est 1h` → `task.switched`;
+5a. **Accept:** Claude → System: `tempo switch prod-hotfix --reason urgent --est 1h` → `task.switched`;
     current task pushed to stack.
 5b. **Decline:** nothing is logged (the check wrote nothing).
-6. When hotfix done: `kaban done` → pops back to the interrupted task.
+6. When hotfix done: `tempo done` → pops back to the interrupted task.
 
 **Alternate flows**
 - **Full ripple (deferred, UC-9/E2):** instead of a capacity delta, show a schedule **diff** with
@@ -134,14 +134,14 @@
 
 **Main flow**
 1. Actor → Claude: "had a 1h sprint planning at 2pm yesterday."
-2. Claude → System: `kaban log meeting sprint-planning --at "yesterday 14:00" --dur 1h`.
+2. Claude → System: `tempo log meeting sprint-planning --at "yesterday 14:00" --dur 1h`.
 3. System: resolves loose time to absolute ISO-8601+offset; expands `--dur` into a start/finish pair;
    sets `source=backfill`, `logged_at=now`; appends.
 4. System → Claude → Actor: confirmation with the resolved absolute time.
 
 **Exceptions**
 - **3e. Backfill overlaps a live event** (e.g. a task was "started" across that window): System
-  **accepts and flags** — appends the event; `kaban check` reports the overlap (a correction is a
+  **accepts and flags** — appends the event; `tempo check` reports the overlap (a correction is a
   new event, never an edit).
 - **1e. Actor unsure of the time:** allow an imprecise marker (`--at ~afternoon`) stored as a range
   rather than inventing a precise timestamp.
@@ -158,7 +158,7 @@
 
 **Main flow**
 1. Actor → Claude: "how's it going / show me where I'm at."
-2. Claude → System: `kaban standup` (or `board` + `plan status`).
+2. Claude → System: `tempo standup` (or `board` + `plan status`).
 3. System computes from the log: in-flight task(s), blocked items, completed today/period, remaining
    planned leaves + estimates; projects remaining estimate vs remaining capacity.
 4. System → Claude → Actor: board view + verdict — `on track` or `~4h behind → deadline at risk;
@@ -167,7 +167,7 @@
 **Alternate flows**
 - **Behind:** Claude surfaces the pressure source (scope added vs estimates over) and offers the
   UC-3/UC-9 replan path.
-- **Just the board:** "show board" → `kaban board` (todo/doing/blocked/done) with planned-not-started
+- **Just the board:** "show board" → `tempo board` (todo/doing/blocked/done) with planned-not-started
   in todo.
 
 ---
@@ -182,7 +182,7 @@
 
 **Main flow**
 1. Actor → Claude: "let's review the week."
-2. Claude → System: `kaban report --week`.
+2. Claude → System: `tempo report --week`.
 3. System computes (events sorted by `at`): total tracked time broken down by **project**, **tag/
    category**, and **Eisenhower quadrant** — hours and % each; plus est-vs-actual and interruption
    count.
@@ -205,7 +205,7 @@
 
 **Main flow**
 1. Actor → Claude: "close out the sprint."
-2. Claude → System: `kaban plan close` → appends `period.closed`.
+2. Claude → System: `tempo plan close` → appends `period.closed`.
 3. System → Claude → Actor: planned-vs-completed leaves, aggregate est-vs-actual bias, and % of the
    period spent on unplanned/interrupt work.
 
@@ -224,7 +224,7 @@
 
 **Main flow (validate)**
 1. Actor → Claude: "check my log."
-2. Claude → System: `kaban check` → validates schema, sort-ability, overlapping spans; reports
+2. Claude → System: `tempo check` → validates schema, sort-ability, overlapping spans; reports
    data-quality state (including confidence-labeled spans).
 
 **Main flow (reconcile gaps)**

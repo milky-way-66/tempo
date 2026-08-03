@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "atlassian": {
-      "type": "sse",
-      "url": "https://mcp.atlassian.com/v1/sse"
+    "jira": {
+      "command": "uvx",
+      "args": ["mcp-atlassian", "--env-file", ".env"]
     }
   }
 }

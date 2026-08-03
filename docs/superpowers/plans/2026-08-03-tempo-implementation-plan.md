@@ -1,7 +1,7 @@
-# Kaban — Implementation Plan
+# Tempo — Implementation Plan
 
-> Status: **DRAFT.** Turns [the detailed design](../specs/2026-08-03-kaban-detailed-design.md) into
-> ordered, buildable milestones. Codename `kaban` until a name is chosen.
+> Status: **DRAFT.** Turns [the detailed design](../specs/2026-08-03-tempo-detailed-design.md) into
+> ordered, buildable milestones. Name: **Tempo** (npm `@milkyway/tempo`, command `tempo`).
 > Last updated: 2026-08-03
 
 ## Approach
@@ -27,7 +27,7 @@ M0 scaffold
                       ├─ M6 periods + planning
                       ├─ M7 reports (report/standup/what-if)
                       └─ M8 check (integrity)
-                           └─ M9 git + `kaban init`
+                           └─ M9 git + `tempo init`
                                 └─ M10 behavior assets (CLAUDE.md + rituals skill)
                                      └─ M11 npm distribution + docs
 ```
@@ -36,7 +36,7 @@ M0 scaffold
 
 ### M0 — Scaffold
 - **Goal:** an installable, testable TS package skeleton.
-- **Work:** `package.json` (ESM, `type: module`, `bin: { kaban: dist/bin.js }`, `engines.node>=20`),
+- **Work:** `package.json` (ESM, `type: module`, `bin: { tempo: dist/bin.js }`, `engines.node>=20`),
   `tsconfig`, Vitest, ESLint/Prettier, `src/bin.ts` stub routing `init|check|mcp` (default `mcp`),
   dep `@modelcontextprotocol/sdk` + a date lib (e.g. Luxon).
 - **Done:** `npm run build` emits `dist/`; `npx . mcp` starts and cleanly no-ops; `npm test` runs.
@@ -44,7 +44,7 @@ M0 scaffold
 ### M1 — Types, store, config
 - **Goal:** append/read the log and load config.
 - **Work:** `types.ts` (Event union + projection types); `store.ts` (`append(event)`, `readAll()` over
-  `events.jsonl`, creating the dir if absent); `config.ts` (load/validate/default `~/.kaban/config.json`,
+  `events.jsonl`, creating the dir if absent); `config.ts` (load/validate/default `~/.tempo/config.json`,
   `capacityHoursPerDay: 8`, tz, workDays).
 - **Tests:** append→readAll roundtrip; malformed line surfaces an error; config defaults applied.
 - **Done:** can persist and reload events; config validated.
@@ -69,9 +69,9 @@ M0 scaffold
 - **Goal:** a working tool you can drive from Claude Code.
 - **Work:** `server.ts` (MCP over stdio, in-memory projection updated per append); tools `start`,
   `stop`, `board`. `start` creates-inline (title/imp/tags/est) and opens a span; `stop` closes with a
-  verdict (`est` vs actual). No git yet — plain `~/.kaban/`.
+  verdict (`est` vs actual). No git yet — plain `~/.tempo/`.
 - **Tests:** integration — drive `start→stop→board`, assert structured returns and the board columns.
-- **Done:** `claude mcp add kaban -- npx . mcp`; narrate two tasks and see the board. **First dogfood.**
+- **Done:** `claude mcp add tempo -- npx . mcp`; narrate two tasks and see the board. **First dogfood.**
 
 ### M5 — Capture breadth + fuzzy resolve
 - **Goal:** the full capture surface with natural task references.
@@ -104,10 +104,10 @@ M0 scaffold
 - **Tests:** each impossible-state detector; quality metrics on mixed live/backfill fixtures.
 - **Done:** `check` cleanly separates real problems from normal multitasking.
 
-### M9 — Git + `kaban init`
+### M9 — Git + `tempo init`
 - **Goal:** durable, syncable store.
 - **Work:** `git.ts` (init repo, write `.gitattributes` `events.jsonl merge=union`, best-effort commit
-  per append with `"<type> <task> @<at>"`); `kaban init` bootstraps `~/.kaban/` (repo, config, assets).
+  per append with `"<type> <task> @<at>"`); `tempo init` bootstraps `~/.tempo/` (repo, config, assets).
 - **Tests:** init idempotent; commit-after-append; commit failure warns but append persists; union
   merge + `id` dedup on a simulated two-branch merge.
 - **Done:** every change is committed; simulated multi-machine merge replays cleanly.
@@ -116,7 +116,7 @@ M0 scaffold
 - **Goal:** the agent follows the rituals.
 - **Work:** `assets/CLAUDE.md` (when to `add` vs `start`; always set `imp`; `reason` on interrupt;
   prefer `log` for past/meetings; run `check` before weekly review; relay tool output); rituals skill
-  `assets/skills/rituals/` (plan-sprint, daily-standup, weekly-review, interrupt); `kaban init`
+  `assets/skills/rituals/` (plan-sprint, daily-standup, weekly-review, interrupt); `tempo init`
   installs them.
 - **Tests:** manual dogfood scripts (plan → work+interrupt → daily → weekly) produce sane sessions.
 - **Done:** a fresh install guides the full plan→work→track→analyze loop.
@@ -124,8 +124,8 @@ M0 scaffold
 ### M11 — npm distribution + docs
 - **Goal:** install anywhere.
 - **Work:** finalize `package.json` (`files: [dist, assets]`, `prepublishOnly: build`), README with
-  `npx @you/<name> init` + `claude mcp add <name> -s user -- npx -y @you/<name> mcp`; pick the real
-  name; `npm publish --access public`; tag `v0.1.0`.
+  `npx @milkyway/tempo init` + `claude mcp add tempo -s user -- npx -y @milkyway/tempo mcp`;
+  `npm publish --access public`; tag `v0.1.0`.
 - **Done:** clean-machine install works end-to-end from npm.
 
 ## Testing strategy (per design §14)
@@ -155,4 +155,4 @@ M0 scaffold
 ## Out of scope for this plan (deferred)
 
 Estimator/forecast, interruption-ripple diff, git-commit gap corroboration, auto-resume focus stack,
-`estimate.revised`, `kaban sync`, SQLite read-cache.
+`estimate.revised`, `tempo sync`, SQLite read-cache.

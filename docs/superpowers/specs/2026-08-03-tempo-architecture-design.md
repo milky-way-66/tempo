@@ -1,4 +1,4 @@
-# Kaban — Architecture & Core Decisions
+# Tempo — Architecture & Core Decisions
 
 > Status: **DRAFT — brainstorming.** Locked decisions are firm; open questions at the end are still
 > open. From [USER_STORIES.md](../../../USER_STORIES.md) and [USE_CASES.md](../../../USE_CASES.md).
@@ -20,7 +20,7 @@ goes through a typed MCP server that owns the schema and every number.
 | Interface | **Local MCP server, typed tools** — schema-validated args, structured returns. |
 | Truth | **Append-only JSONL event log** — state derived by replay; corrections/backfill/confidence fall out for free. |
 | Engine | **JSONL, not SQLite** — zero deps, human-readable, clean git diffs. Personal scale → replay is instant. |
-| Storage | **One global, git-backed store** (`~/.kaban/`) — free history, backup, multi-machine sync. |
+| Storage | **One global, git-backed store** (`~/.tempo/`) — free history, backup, multi-machine sync. |
 | Runtime | **TypeScript / Node** — MCP SDK is TS-first; good date libs; `npx`-runnable. |
 | Behavior | **Typed tools + rituals (CLAUDE.md + skill), no hard hook** — schemas force good input; agent never sees the log path. |
 
@@ -28,15 +28,15 @@ goes through a typed MCP server that owns the schema and every number.
 
 ```
 You ⇄ Claude Code ── CLAUDE.md + rituals skill guide it
-          │ calls mcp__kaban__* (typed)
+          │ calls mcp__tempo__* (typed)
           ▼
-   kaban MCP server (Node/TS)   ← only reader/writer of work data
+   tempo MCP server (Node/TS)   ← only reader/writer of work data
      • store       append/read events.jsonl
      • replay      fold events (sorted by `at`) → in-memory projection
      • time parse  "yesterday 14:00" / "-2h" → absolute ISO-8601+offset
      • git commit  after each append (best-effort)
           ▼
-   ~/.kaban/  (git repo):  events.jsonl  ·  config.json (capacity/day, tz)
+   ~/.tempo/  (git repo):  events.jsonl  ·  config.json (capacity/day, tz)
 ```
 
 **Write:** utterance → tool → validate → parse time → append → commit → update projection → return.
@@ -87,7 +87,7 @@ board column, interruption count (starts carrying a `reason`), plan burndown, qu
 ## v1 scope
 
 The plan→work→track→analyze loop, and nothing else: the 6 events, the ~10 tools above, CLAUDE.md +
-rituals skill, git-backed `~/.kaban/`. **Deferred (no schema change):** estimator/forecast,
+rituals skill, git-backed `~/.tempo/`. **Deferred (no schema change):** estimator/forecast,
 ripple-diff, git-commit gap corroboration, auto-resume stack, `estimate.revised`, any SQLite cache.
 
 ## Open questions (brainstorming)
@@ -99,4 +99,4 @@ ripple-diff, git-commit gap corroboration, auto-resume stack, `estimate.revised`
    define gap/overlap handling.
 4. **Multi-machine git merge** — append-only union-merge driver vs pull-before-write convention.
 5. **Capacity** — fixed user-set focus-hours/day for v1 (learned later).
-6. **Naming** — "kaban" real or placeholder?
+6. **Naming** — decided: **Tempo** (npm `@milkyway/tempo`, command `tempo`).

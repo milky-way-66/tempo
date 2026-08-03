@@ -1,6 +1,6 @@
-# Kaban — Detailed Design
+# Tempo — Detailed Design
 
-> Status: **DRAFT.** Builds on [the architecture spec](2026-08-03-kaban-architecture-design.md).
+> Status: **DRAFT.** Builds on [the architecture spec](2026-08-03-tempo-architecture-design.md).
 > Resolves the open questions and specifies schema, projection, algorithms, every tool, git,
 > config, distribution (npm), and the behavior layer.
 > Last updated: 2026-08-03
@@ -14,7 +14,7 @@
 | 3 | Time attribution | **Concurrent span model — multitasking allowed** | Tasks accrue time from each `started` to its `stopped`; several may run at once; overlap is normal. Report **gross** (per-task) and **net** (wall-clock union). |
 | 4 | Multi-machine merge | **`events.jsonl merge=union` + dedup by event `id`** | Append-only unions cleanly; replay dedups and sorts, so order/dupes never corrupt numbers. |
 | 5 | Capacity | **`capacityHoursPerDay: 8` in config, optional per-period override** (learned later) | You work an 8h day. Drives `report`/what-if; no cold-start. |
-| 6 | Name | **Placeholder — undecided** | "kaban" is a codename; see candidates in §16. |
+| 6 | Name | **Tempo** — npm `@milkyway/tempo`, command `tempo` | Musical *tempo* = your working rhythm/pace. Scoped because unscoped `tempo` is taken; the bin/command is independent, so you still type `tempo`. |
 
 > **What a "task" is:** the *universal unit of work* — coding, an estimate, a meeting, a review,
 > admin, anything you spend time on. There is **no** separate event type per activity kind; the kind
@@ -28,11 +28,11 @@
 Published as an npm package; the MCP server runs via `npx`.
 
 ```
-kaban/
-  package.json          bin: { "kaban": "dist/bin.js" }, exports the server
+tempo/
+  package.json          bin: { "tempo": "dist/bin.js" }, exports the server
   tsconfig.json
   src/
-    bin.ts              CLI: `kaban init` | `kaban check` | `kaban mcp` (default: mcp)
+    bin.ts              CLI: `tempo init` | `tempo check` | `tempo mcp` (default: mcp)
     server.ts           MCP server over stdio (@modelcontextprotocol/sdk)
     types.ts            event + projection types
     core/
@@ -45,18 +45,18 @@ kaban/
       config.ts         load/validate config.json
     tools/*.ts          one handler per MCP tool
   assets/
-    CLAUDE.md           behavior guidance (installed by `kaban init`)
-    skills/rituals/     ritual flows (installed by `kaban init`)
-    gitattributes       shipped -> ~/.kaban/.gitattributes
+    CLAUDE.md           behavior guidance (installed by `tempo init`)
+    skills/rituals/     ritual flows (installed by `tempo init`)
+    gitattributes       shipped -> ~/.tempo/.gitattributes
   test/                 fixtures + golden report tests
 ```
 
 `core/*` is pure and unit-tested in isolation; `tools/*` are thin adapters over `core`.
 
-## 2. Data store layout (`~/.kaban/`)
+## 2. Data store layout (`~/.tempo/`)
 
 ```
-~/.kaban/               its own git repo (created by `kaban init`)
+~/.tempo/               its own git repo (created by `tempo init`)
   events.jsonl          append-only source of truth
   config.json           { timezone, capacityHoursPerDay, workDays }
   .gitattributes        events.jsonl merge=union
@@ -229,7 +229,7 @@ Task creation during planning reuses `add` (with `period`, `parent`, `est`).
   per-dimension figures are **gross** (attributed). Capacity and the on-track verdict use **net**
   against `capacityHoursPerDay` (8h).
 
-## 9. Config (`~/.kaban/config.json`)
+## 9. Config (`~/.tempo/config.json`)
 
 ```json
 { "timezone": "Asia/Ho_Chi_Minh", "capacityHoursPerDay": 8, "workDays": ["mon","tue","wed","thu","fri"] }
@@ -238,17 +238,17 @@ Task creation during planning reuses `add` (with `period`, `parent`, `est`).
 
 ## 10. Git integration
 
-- **`kaban init`**: create `~/.kaban/`, `git init`, write `config.json` + `.gitattributes`
+- **`tempo init`**: create `~/.tempo/`, `git init`, write `config.json` + `.gitattributes`
   (`events.jsonl merge=union`), initial commit.
 - **On append**: `git add -A && git commit -m "<type> <task> @<at>"` — best-effort; failure warns but
   the append already persisted.
-- **Multi-machine**: user pulls/pushes (a `kaban sync` helper can come later). `merge=union`
+- **Multi-machine**: user pulls/pushes (a `tempo sync` helper can come later). `merge=union`
   concatenates both sides' appends; replay **dedups by `id`** and **sorts by `at`**, so concurrent
   edits never corrupt numbers. Worst case is a duplicate line, which dedup removes.
 
 ## 11. Behavior layer
 
-- **CLAUDE.md** (installed to the project/user by `kaban init`): when to `add` vs `start`; always set
+- **CLAUDE.md** (installed to the project/user by `tempo init`): when to `add` vs `start`; always set
   `imp` at creation and `reason` on an interrupting `start`; prefer `log` for past/meetings with
   `at`; run `check` before the weekly review; relay tool output rather than reasoning over raw data.
 - **Rituals skill** (`assets/skills/rituals/`):
@@ -260,23 +260,23 @@ Task creation during planning reuses `add` (with `period`, `parent`, `est`).
 
 ## 12. Distribution (npm — install anywhere)
 
-- **package.json**: `"bin": { "kaban": "dist/bin.js" }`, `"files": ["dist","assets"]`, ESM,
+- **package.json**: `"bin": { "tempo": "dist/bin.js" }`, `"files": ["dist","assets"]`, ESM,
   `engines.node >= 20`, dep `@modelcontextprotocol/sdk` + a small date lib; `prepublishOnly: tsc`.
 - **Build & publish**: `npm run build` (tsc → `dist/`) → `npm publish --access public` (scoped
-  `@you/kaban`).
+  `@milkyway/tempo`).
 - **Install anywhere**:
   ```bash
-  npx @you/kaban init            # creates ~/.kaban, installs CLAUDE.md + rituals skill
+  npx @milkyway/tempo init            # creates ~/.tempo, installs CLAUDE.md + rituals skill
   ```
   Register the MCP server with Claude Code (user scope, works in every repo):
   ```bash
-  claude mcp add kaban -s user -- npx -y @you/kaban mcp
+  claude mcp add tempo -s user -- npx -y @milkyway/tempo mcp
   ```
   or `.mcp.json`:
   ```json
-  { "mcpServers": { "kaban": { "command": "npx", "args": ["-y", "@you/kaban", "mcp"] } } }
+  { "mcpServers": { "tempo": { "command": "npx", "args": ["-y", "@milkyway/tempo", "mcp"] } } }
   ```
-- `bin.ts` subcommands: `init`, `check`, `mcp` (default). The server reads `~/.kaban/`, so it's
+- `bin.ts` subcommands: `init`, `check`, `mcp` (default). The server reads `~/.tempo/`, so it's
   machine-global regardless of which project you're chatting from.
 
 ## 13. Server lifecycle
@@ -297,22 +297,15 @@ serve numbers and point at `check` (never silently wrong).
 ## 15. Deferred (unchanged, no schema change)
 
 Estimator/forecast, ripple-diff, git-commit gap corroboration, auto-resume focus stack,
-`estimate.revised`, `kaban sync`, SQLite read-cache.
+`estimate.revised`, `tempo sync`, SQLite read-cache.
 
-## 16. Name candidates
+## 16. Name — decided: **Tempo**
 
-"kaban" is a placeholder. The name is also the command you type (`npx @you/<name> mcp`,
-`claude mcp add <name>`), so short + lowercase-friendly matters. Shortlist with rationale (check
-npm availability before publish; a scope like `@you/<name>` sidesteps collisions regardless):
+"Tempo" = the working *rhythm* the tool measures — interruptions, throughput, Q2-vs-Q3 drift.
+Published under a scope because the unscoped `tempo` is taken on npm; the bin/command name is
+independent of the package name, so you still type `tempo`.
 
-| Name | Why it fits |
-|---|---|
-| **Cadence** *(top pick)* | The tool measures your working *rhythm* — Q2-vs-Q3 drift, interruptions, throughput. Professional, memorable. |
-| **Reckon** | Honest *reckoning* of time, and reference-class estimates ("I reckon ~5h"). Ties to the estimator vision. Distinctive. |
-| **Tally** | It *tallies* time and estimates from events. Short, friendly, obvious verb. |
-| **Ledger** | An append-only *ledger* of work — matches event-sourcing exactly. |
-| **Stint** | A *stint* = one work session (a span). Quietly on-model; very short. |
-| **Loom** | *Weaves* a stream of events into a picture of your work. Short, evocative. |
-
-Recommendation: **Cadence** for the story it tells, **Reckon** if you want to foreground the
-honest-estimation angle. Decide before first publish; the codename `kaban` stays until then.
+- **npm package:** `@milkyway/tempo`
+- **command / MCP server name:** `tempo`
+- **store dir:** `~/.tempo/`
+- **install:** `npx @milkyway/tempo init` · `claude mcp add tempo -s user -- npx -y @milkyway/tempo mcp`

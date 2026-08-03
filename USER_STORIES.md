@@ -1,4 +1,4 @@
-# Kaban — User Stories
+# Tempo — User Stories
 
 > Status: **draft — the starting point.** This document is now the anchor for the app: use cases
 > and design will be derived from these stories. Written to pin down *what the tool must let a person
@@ -11,7 +11,7 @@
 A git-backed, event-sourced time/task tracker you **narrate to Claude instead of using a timer.**
 Everything is a timestamped event appended to one `log.jsonl`; state (time spent, board, plan
 progress) is *computed* by replaying events, never edited directly. Claude never reads or writes the
-log itself — it shells out to a small `kaban` CLI that owns the schema, the append-only invariant,
+log itself — it shells out to a small `tempo` CLI that owns the schema, the append-only invariant,
 and every derived number. From that one log you get planning, a Kanban board, time tracking,
 estimate-vs-actual, interruption impact, and — later, as history accumulates — a personal estimator
 and reschedule/ripple engine.
@@ -48,7 +48,7 @@ phrased against observable CLI behavior, since the CLI — not the LLM — owns 
   Future-me story is **deferred**: it must add zero burden to the Narrator today.
 
 A cross-cutting non-negotiable, true of every story below: **Claude never reads or writes
-`log.jsonl` directly — it shells out to `kaban`.** Where that constraint is testable, it appears in
+`log.jsonl` directly — it shells out to `tempo`.** Where that constraint is testable, it appears in
 the criteria.
 
 ---
@@ -64,7 +64,7 @@ the criteria.
 **so that** everything I commit to has a shared deadline horizon to be measured against.
 
 **Acceptance**
-- A period is created with a start and end (e.g. `kaban plan open --sprint --from mon --len 2w`),
+- A period is created with a start and end (e.g. `tempo plan open --sprint --from mon --len 2w`),
   recorded as an event, not a hand-edited file.
 - The period's end date becomes the default deadline horizon for tasks planned into it (urgency in
   B2 decays toward it).
@@ -110,7 +110,7 @@ the period, **so that** I commit to a realistic amount instead of overloading th
 the plan, **so that** I know whether the sprint is on track before it ends.
 
 **Acceptance**
-- `kaban plan status` (or `report --sprint`) shows planned vs completed leaves and estimate burned
+- `tempo plan status` (or `report --sprint`) shows planned vs completed leaves and estimate burned
   vs remaining, derived entirely from events.
 - Interruptions and unplanned work that landed in the period are visible as *scope added* against the
   original commitment (this connects the plan to the interruption-ripple story, E2).
@@ -160,7 +160,7 @@ or whether I need to replan / reschedule / renegotiate.
 recorded, **so that** I never touch a timer or a form.
 
 **Acceptance**
-- Claude maps the utterance to `kaban start auth-bug --est 2h --imp high --tag bug` and runs it.
+- Claude maps the utterance to `tempo start auth-bug --est 2h --imp high --tag bug` and runs it.
 - A `task.created` (if new) and `task.started` event are appended with `at` defaulting to now and a
   CLI-written `logged_at`.
 - If the task was planned in P2, `start` attaches to the existing task rather than creating a
@@ -232,7 +232,7 @@ that** signal that's impossible to reconstruct later is captured now.
 **so that** there is no board file to drift out of sync.
 
 **Acceptance**
-- `kaban board` output is a pure function of the current log; no separate state is stored or edited.
+- `tempo board` output is a pure function of the current log; no separate state is stored or edited.
 - A task's column is derived from its latest relevant event.
 - Planned-but-not-started tasks (from Epic P) appear in `todo`.
 
@@ -260,7 +260,7 @@ early enough to change course and still hit the deadline.
 > "on track?" answer, composed from views + plan + a deadline projection.
 
 **Acceptance**
-- One command (`kaban standup` / `kaban day`) shows, from the log alone: current task(s) in flight,
+- One command (`tempo standup` / `tempo day`) shows, from the log alone: current task(s) in flight,
   completed today/this period, and remaining planned leaves with their estimates.
 - It projects remaining estimate against remaining capacity in the period and states a verdict —
   e.g. `on track` / `~4h behind → deadline at risk` — rather than leaving the arithmetic to the
@@ -276,7 +276,7 @@ early enough to change course and still hit the deadline.
 without reading raw data.
 
 **Acceptance**
-- `kaban report --today` prints e.g. `5h logged, 2 interruptions, auth-bug ran 1.5× estimate`.
+- `tempo report --today` prints e.g. `5h logged, 2 interruptions, auth-bug ran 1.5× estimate`.
 - Every number is reproducible: two runs on the same log return identical output.
 
 ### C2 — Estimate vs actual over a period
@@ -284,7 +284,7 @@ without reading raw data.
 systematic bias forming.
 
 **Acceptance**
-- `kaban report [--today|--week|--sprint]` reports per-task and aggregate est-vs-actual.
+- `tempo report [--today|--week|--sprint]` reports per-task and aggregate est-vs-actual.
 - Out-of-order `at` values are sorted before any duration is computed.
 
 ### C3 — See my firefighting
@@ -316,7 +316,7 @@ and adjust next week.
 > behavior-changing report the whole tool exists to produce.
 
 **Acceptance**
-- `kaban report --week` shows total tracked time broken down by at least: **project**, **tag/
+- `tempo report --week` shows total tracked time broken down by at least: **project**, **tag/
   category** (bug / feature / meeting / review / …), and **Eisenhower quadrant** — each as hours and
   as a percentage of the week.
 - It surfaces the **value verdict** explicitly: how much time went to Q2 (important/not-urgent,
@@ -333,11 +333,11 @@ and adjust next week.
 ## Epic D — Trust the log (data quality)
 
 ### D1 — Validate the log
-**As an** Analyst, **I want** `kaban check` to catch schema violations, ordering problems, and
+**As an** Analyst, **I want** `tempo check` to catch schema violations, ordering problems, and
 overlapping spans, **so that** I can trust every derived number.
 
 **Acceptance**
-- `kaban check` validates schema, sort-ability, and span overlaps, and reports data-quality state.
+- `tempo check` validates schema, sort-ability, and span overlaps, and reports data-quality state.
 - It is the guard between a backfill-heavy log and silently wrong analytics.
 
 ### D2 — Reconstruct gaps from real commits, without nagging
@@ -363,7 +363,7 @@ live-narrated hour with a Friday-backfilled guess.
 rather than silently rewriting history, **so that** the log stays append-only and auditable.
 
 **Acceptance**
-- An overlapping/contradictory event is appended, not merged; `kaban check` flags the conflict.
+- An overlapping/contradictory event is appended, not merged; `tempo check` flags the conflict.
 - No command rewrites or deletes an existing line.
 
 ---
@@ -420,7 +420,7 @@ and candidate mitigations, **so that** I renegotiate from evidence.
 
 ## Non-goals for v1 (explicit, to protect the core)
 
-- No timer, no daemon, no database — one `log.jsonl` and one `kaban` CLI.
+- No timer, no daemon, no database — one `log.jsonl` and one `tempo` CLI.
 - No board file, no separately-maintained state — including the plan and the WBS, which are
   **derived views**, not editable trees.
 - No automatic scheduling engine yet (Epic E is deferred; P4 capacity check starts naive with a
@@ -434,7 +434,7 @@ and candidate mitigations, **so that** I renegotiate from evidence.
    first-class-lite.)
 2. How does the estimator decide "similar"? (Category + size + project to start — affects E1/E4.)
 3. Where does *daily capacity* come from — fixed or learned? (Blocks P4 and E2/E3/E5 scheduling.)
-4. Product name — is "Kaban" final or a placeholder?
+4. Product name — is "Tempo" final or a placeholder?
 5. Backfill-vs-live conflict — reject, auto-split, or accept-and-flag? (Leaning accept-and-flag —
    this is why D4 is worded as it is.)
 6. **New:** How is a WBS parent/child link modeled in an append-only log — a field on
