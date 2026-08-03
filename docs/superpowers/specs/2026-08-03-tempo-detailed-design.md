@@ -14,7 +14,7 @@
 | 3 | Time attribution | **Concurrent span model — multitasking allowed** | Tasks accrue time from each `started` to its `stopped`; several may run at once; overlap is normal. Report **gross** (per-task) and **net** (wall-clock union). |
 | 4 | Multi-machine merge | **`events.jsonl merge=union` + dedup by event `id`** | Append-only unions cleanly; replay dedups and sorts, so order/dupes never corrupt numbers. |
 | 5 | Capacity | **`capacityHoursPerDay: 8` in config, optional per-period override** (learned later) | You work an 8h day. Drives `report`/what-if; no cold-start. |
-| 6 | Name | **Tempo** — npm `@milkyway/tempo`, command `tempo` | Musical *tempo* = your working rhythm/pace. Scoped because unscoped `tempo` is taken; the bin/command is independent, so you still type `tempo`. |
+| 6 | Name | **Tempo** — npm `@milkyway-666/tempo`, command `tempo` | Musical *tempo* = your working rhythm/pace. Scoped because unscoped `tempo` is taken; the bin/command is independent, so you still type `tempo`. |
 
 > **What a "task" is:** the *universal unit of work* — coding, an estimate, a meeting, a review,
 > admin, anything you spend time on. There is **no** separate event type per activity kind; the kind
@@ -263,18 +263,18 @@ Task creation during planning reuses `add` (with `period`, `parent`, `est`).
 - **package.json**: `"bin": { "tempo": "dist/bin.js" }`, `"files": ["dist","assets"]`, ESM,
   `engines.node >= 20`, dep `@modelcontextprotocol/sdk` + a small date lib; `prepublishOnly: tsc`.
 - **Build & publish**: `npm run build` (tsc → `dist/`) → `npm publish --access public` (scoped
-  `@milkyway/tempo`).
+  `@milkyway-666/tempo`).
 - **Install anywhere**:
   ```bash
-  npx @milkyway/tempo init            # creates ~/.tempo, installs CLAUDE.md + rituals skill
+  npx @milkyway-666/tempo init            # creates ~/.tempo, installs CLAUDE.md + rituals skill
   ```
   Register the MCP server with Claude Code (user scope, works in every repo):
   ```bash
-  claude mcp add tempo -s user -- npx -y @milkyway/tempo mcp
+  claude mcp add tempo -s user -- npx -y @milkyway-666/tempo mcp
   ```
   or `.mcp.json`:
   ```json
-  { "mcpServers": { "tempo": { "command": "npx", "args": ["-y", "@milkyway/tempo", "mcp"] } } }
+  { "mcpServers": { "tempo": { "command": "npx", "args": ["-y", "@milkyway-666/tempo", "mcp"] } } }
   ```
 - `bin.ts` subcommands: `init`, `check`, `mcp` (default). The server reads `~/.tempo/`, so it's
   machine-global regardless of which project you're chatting from.
@@ -305,7 +305,7 @@ Estimator/forecast, ripple-diff, git-commit gap corroboration, auto-resume focus
 Published under a scope because the unscoped `tempo` is taken on npm; the bin/command name is
 independent of the package name, so you still type `tempo`.
 
-- **npm package:** `@milkyway/tempo`
+- **npm package:** `@milkyway-666/tempo`
 - **command / MCP server name:** `tempo`
 - **store dir:** `~/.tempo/`
-- **install:** `npx @milkyway/tempo init` · `claude mcp add tempo -s user -- npx -y @milkyway/tempo mcp`
+- **install:** `npx @milkyway-666/tempo init` · `claude mcp add tempo -s user -- npx -y @milkyway-666/tempo mcp`

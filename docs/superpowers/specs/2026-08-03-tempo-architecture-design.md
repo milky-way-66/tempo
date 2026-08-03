@@ -99,4 +99,4 @@ ripple-diff, git-commit gap corroboration, auto-resume stack, `estimate.revised`
    define gap/overlap handling.
 4. **Multi-machine git merge** — append-only union-merge driver vs pull-before-write convention.
 5. **Capacity** — fixed user-set focus-hours/day for v1 (learned later).
-6. **Naming** — decided: **Tempo** (npm `@milkyway/tempo`, command `tempo`).
+6. **Naming** — decided: **Tempo** (npm `@milkyway-666/tempo`, command `tempo`).

@@ -1,7 +1,7 @@
 # Tempo — Implementation Plan
 
 > Status: **DRAFT.** Turns [the detailed design](../specs/2026-08-03-tempo-detailed-design.md) into
-> ordered, buildable milestones. Name: **Tempo** (npm `@milkyway/tempo`, command `tempo`).
+> ordered, buildable milestones. Name: **Tempo** (npm `@milkyway-666/tempo`, command `tempo`).
 > Last updated: 2026-08-03
 
 ## Approach
@@ -124,7 +124,7 @@ M0 scaffold
 ### M11 — npm distribution + docs
 - **Goal:** install anywhere.
 - **Work:** finalize `package.json` (`files: [dist, assets]`, `prepublishOnly: build`), README with
-  `npx @milkyway/tempo init` + `claude mcp add tempo -s user -- npx -y @milkyway/tempo mcp`;
+  `npx @milkyway-666/tempo init` + `claude mcp add tempo -s user -- npx -y @milkyway-666/tempo mcp`;
   `npm publish --access public`; tag `v0.1.0`.
 - **Done:** clean-machine install works end-to-end from npm.
 

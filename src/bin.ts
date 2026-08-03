@@ -28,7 +28,7 @@ function doInit(): void {
       `Tempo initialized at ${paths.home}`,
       "",
       "Register the MCP server with Claude Code (user scope, all repos):",
-      "  claude mcp add tempo -s user -- npx -y @milkyway/tempo mcp",
+      "  claude mcp add tempo -s user -- npx -y @milkyway-666/tempo mcp",
       "",
       `Behavior + rituals were copied to ${join(paths.home, "assets")}`,
       "  • assets/CLAUDE.md — add to your Claude Code memory",

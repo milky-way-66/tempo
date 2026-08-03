@@ -15,8 +15,8 @@ just talk. Runs as a local [MCP](https://modelcontextprotocol.io) server.
 ## Install
 
 ```bash
-npx @milkyway/tempo init                 # creates ~/.tempo (git repo + config + rituals)
-claude mcp add tempo -s user -- npx -y @milkyway/tempo mcp
+npx @milkyway-666/tempo init                 # creates ~/.tempo (git repo + config + rituals)
+claude mcp add tempo -s user -- npx -y @milkyway-666/tempo mcp
 ```
 
 Then add `~/.tempo/assets/CLAUDE.md` to your Claude Code memory so the agent knows the rituals.

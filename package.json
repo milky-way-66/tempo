@@ -1,5 +1,5 @@
 {
-  "name": "@milkyway/tempo",
+  "name": "@milkyway-666/tempo",
   "version": "0.1.0",
   "description": "Tempo — a personal, chat-driven work tracker. Narrate your work to an agent; it appends an event log and derives your board, time, and plans. Runs as a local MCP server for Claude Code.",
   "type": "module",
@@ -29,6 +29,14 @@
     "event-sourcing"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/milky-way-66/tempo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/milky-way-66/tempo/issues"
+  },
+  "homepage": "https://github.com/milky-way-66/tempo#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.4.0",
     "luxon": "^3.5.0",
