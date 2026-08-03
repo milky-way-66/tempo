@@ -6,9 +6,9 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { Engine } from "./core/engine.js";
 import { buildServer } from "./server.js";
 import { initStore } from "./core/git.js";
-import { initPaths, globalHome, defaultConfig, type Paths } from "./core/config.js";
+import { initPaths, resolvePaths, globalHome, defaultConfig, type Paths } from "./core/config.js";
 import { STORE_VERSION, writeStoreVersion, readStoreVersion } from "./core/version.js";
-import { upgradeStore } from "./core/migrate.js";
+import { upgradeStore, pendingMigrations, type UpgradeStep } from "./core/migrate.js";
 import {
   ensureRitualsLinked,
   ritualsLinked,
@@ -25,6 +25,14 @@ function packageRoot(): string {
 /** Filesystem-safe timestamp for backup dir names, e.g. 20260803-115700. */
 function stampNow(): string {
   return new Date().toISOString().replace(/[-:T]/g, "").replace(/\..+$/, "").replace(/(\d{8})(\d{6})/, "$1-$2");
+}
+
+/** Human lines for a list of migration steps: describe + optional guide. */
+function stepLines(steps: UpgradeStep[]): string[] {
+  return steps.flatMap((s) => [
+    `  • v${s.from} → v${s.to}: ${s.describe}`,
+    ...(s.guide ? [`      ↳ ${s.guide}`] : []),
+  ]);
 }
 
 function writeConfigIfAbsent(paths: Paths): void {
@@ -111,8 +119,8 @@ function doMigrate(): void {
     upgrade.applied.length === 0
       ? [`Store is at v${upgrade.to}; no format changes were needed.`]
       : [
-          `Upgraded store v${upgrade.from} → v${upgrade.to}:`,
-          ...upgrade.applied.map((s) => `  • v${s.from} → v${s.to}: ${s.describe}`),
+          `Upgraded store v${upgrade.from} → v${upgrade.to} (${upgrade.applied.length} step${upgrade.applied.length === 1 ? "" : "s"}):`,
+          ...stepLines(upgrade.applied),
           ...(upgrade.backup ? [`Pre-migration snapshot saved to ${upgrade.backup}`] : []),
         ];
 
@@ -124,6 +132,39 @@ function doMigrate(): void {
       "\n\nThe old ~/.tempo was left untouched; delete it once you've verified the migration." +
       "\n" +
       nextSteps(paths, link),
+  );
+}
+
+/** Upgrade the in-repo store through each pending migration step, in order. */
+function doUpgrade(): void {
+  const paths = resolvePaths();
+  if (!existsSync(paths.eventsFile)) {
+    process.stderr.write(`No Tempo store found (looked for ${paths.eventsFile}). Run \`tempo init\` first.\n`);
+    process.exit(1);
+  }
+  const plan = pendingMigrations(paths);
+  if (plan.newer) {
+    process.stderr.write(
+      `Store is at v${plan.from} but this Tempo only understands up to v${plan.target}. ` +
+        `Update Tempo (e.g. npm i -g @milkyway-666/tempo) and retry.\n`,
+    );
+    process.exit(1);
+  }
+  if (plan.steps.length === 0) {
+    process.stdout.write(`Store is up to date at v${plan.from} (latest v${plan.target}).\n`);
+    return;
+  }
+  process.stdout.write(
+    `Store is v${plan.from}; latest is v${plan.target} — ${plan.steps.length} step${plan.steps.length === 1 ? "" : "s"} to run:\n` +
+      stepLines(plan.steps).join("\n") +
+      "\n\n",
+  );
+  const upgrade = upgradeStore(paths, { stamp: stampNow() });
+  new Engine(paths).renderBoard(); // re-render the boards from the upgraded log
+  process.stdout.write(
+    `Done — store is now v${upgrade.to}.` +
+      (upgrade.backup ? `\nPre-upgrade snapshot saved to ${upgrade.backup}` : "") +
+      `\nCommit the updated .tempo/ with your normal git workflow.\n`,
   );
 }
 
@@ -139,6 +180,8 @@ if (cmd === "init") {
   doInit();
 } else if (cmd === "migrate") {
   doMigrate();
+} else if (cmd === "upgrade") {
+  doUpgrade();
 } else if (cmd === "check") {
   const e = new Engine();
   const linked = ritualsLinked(e.paths);
@@ -148,7 +191,21 @@ if (cmd === "init") {
         memoryLinked: false,
         warning: `rituals not in Claude Code memory — add "@${ritualsImportPath(e.paths)}" to ${rootClaudeMd(e.paths)} (or re-run \`tempo init\`).`,
       };
-  const out = { storeVersion: readStoreVersion(e.paths), rituals, ...e.check() };
+  const plan = pendingMigrations(e.paths);
+  const store = {
+    version: plan.from,
+    latest: plan.target,
+    upToDate: plan.steps.length === 0 && !plan.newer,
+    ...(plan.newer ? { newer: true, note: "store is newer than this Tempo — update Tempo" } : {}),
+    ...(plan.steps.length
+      ? {
+          stepsBehind: plan.steps.length,
+          hint: "run `tempo upgrade`",
+          pending: plan.steps.map((s) => ({ to: s.to, describe: s.describe, guide: s.guide })),
+        }
+      : {}),
+  };
+  const out = { store, storeVersion: readStoreVersion(e.paths), rituals, ...e.check() };
   process.stdout.write(JSON.stringify(out, null, 2) + "\n");
 } else if (cmd === "mcp") {
   startMcp().catch((err) => {
@@ -156,6 +213,6 @@ if (cmd === "init") {
     process.exit(1);
   });
 } else {
-  process.stderr.write(`unknown command: ${cmd}\nusage: tempo [init|migrate|check|mcp]\n`);
+  process.stderr.write(`unknown command: ${cmd}\nusage: tempo [init|migrate|upgrade|check|mcp]\n`);
   process.exit(1);
 }

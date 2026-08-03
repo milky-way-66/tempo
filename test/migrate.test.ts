@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { upgradeStore } from "../src/core/migrate";
+import { upgradeStore, pendingMigrations } from "../src/core/migrate";
 import { readStoreVersion, writeStoreVersion } from "../src/core/version";
 import { defineMigration } from "../src/core/migrations/types";
 import type { Paths } from "../src/core/config";
@@ -41,6 +41,7 @@ const m2to3 = defineMigration({
   from: 2,
   to: 3,
   describe: "stamp `v: 3`",
+  guide: "adds a version stamp; run `tempo upgrade` — see docs/migrations.md",
   apply(ctx) {
     ctx.writeEvents(ctx.readEvents().map((e) => ({ ...e, v: 3 })));
   },
@@ -144,5 +145,27 @@ describe("real migration chain v1 → v3 (imp → scores → flags)", () => {
     expect(p.tasks.get("a")!.important).toBe(true); // high(5) ≥ 4
     expect(p.tasks.get("a")!.urgent).toBe(false); // defaulted, no urgency
     expect(p.tasks.get("b")!.important).toBe(false); // low(1)→med(3), still < 4
+  });
+});
+
+describe("pendingMigrations", () => {
+  it("reports how many steps behind, with each step's describe + guide", () => {
+    const paths = tmpStore();
+    seed(paths, 1, [{ id: "a", type: "task.created" }]);
+    const plan = pendingMigrations(paths, { migrations: [m1to2, m2to3], target: 3 });
+    expect(plan.from).toBe(1);
+    expect(plan.target).toBe(3);
+    expect(plan.newer).toBe(false);
+    expect(plan.steps.map((s) => `${s.from}->${s.to}`)).toEqual(["1->2", "2->3"]);
+    expect(plan.steps[1].guide).toContain("tempo upgrade");
+  });
+
+  it("is empty when up to date and flags a newer store", () => {
+    const paths = tmpStore();
+    seed(paths, 3, []);
+    expect(pendingMigrations(paths, { migrations: [m1to2, m2to3], target: 3 }).steps).toEqual([]);
+    const newer = pendingMigrations(paths, { migrations: [m1to2], target: 2 });
+    expect(newer.newer).toBe(true);
+    expect(newer.steps).toEqual([]);
   });
 });

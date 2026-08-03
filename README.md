@@ -78,7 +78,7 @@ shows where your time actually goes.
   brings it back. Append-only, like every mutation.
 - **`rename`** — bulk-rename a project across every task that carries it.
 
-CLI subcommands: `tempo init` · `tempo migrate` · `tempo check` · `tempo mcp`.
+CLI subcommands: `tempo init` · `tempo migrate` · `tempo upgrade` · `tempo check` · `tempo mcp`.
 
 ## Data
 
@@ -100,9 +100,11 @@ Two board files (at the repo root, beside `.tempo/`) are **regenerated after eve
   upcoming deadlines), and prose time & priority metrics (project split, category mix, time-by-category,
   estimate-vs-actual). No charts or diagrams — Claude reads it directly.
 
-`.tempo/version` records the on-disk store format version. `tempo migrate` upgrades an older store to
-the current version, reporting each step; `tempo check` prints the current `storeVersion`. Override
-the store location with `TEMPO_HOME`.
+`.tempo/version` records the on-disk store format version. **`tempo upgrade`** runs every pending
+migration step in order (reporting how many steps and each step's guide) to bring the store to the
+latest version; **`tempo check`** prints your store version, the latest version, and how many steps
+you're behind. (`tempo migrate` is the one-time move of a legacy `~/.tempo` store into the repo.)
+Override the store location with `TEMPO_HOME`.
 
 ### Store versioning & migrations
 
@@ -120,9 +122,15 @@ steps sequentially. It is safe by construction:
   continues from the last completed version.
 - **Forward-safe** — a store newer than the running Tempo refuses to migrate and tells you to update.
 
-To add a format version: drop a `NNN-*.ts` file in `src/core/migrations/` exporting a
-`defineMigration({ from, to, describe, apply })`, register it in `migrations/index.ts`, and bump
-`STORE_VERSION`. See the worked example in `migrations/index.ts`.
+**Rule:** any change to the on-disk format (event shape/fields, `config.json`, or files present in
+`.tempo/`) **must** ship a migration in the same change — never break an existing store silently.
+Drop a `NNN-*.ts` file in `src/core/migrations/` exporting a `defineMigration({ from, to, describe,
+guide, apply })`, register it in `migrations/index.ts`, and bump `STORE_VERSION`. Write the **`describe`**
+(one line) and a **`guide`** (how to migrate / what changed — a sentence or a pointer to
+[`docs/migrations.md`](docs/migrations.md) or a script) for the user; both are printed by `tempo upgrade`
+so users know how many steps and what each does. Add a migration test. Adding a *new event type* or an
+*optional* field is backward-compatible and needs no migration. See the worked example in
+`migrations/index.ts` and the per-version notes in [`docs/migrations.md`](docs/migrations.md).
 
 ## Development
 

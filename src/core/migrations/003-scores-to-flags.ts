@@ -9,6 +9,7 @@ export default defineMigration({
   from: 2,
   to: 3,
   describe: "replace 1–5 `importance`/`urgency` with yes/no `important`/`urgent`",
+  guide: "scores≥4 become true (important/urgent), <4 become false. Automatic — see docs/migrations.md#v2--v3--yesno-priority-flags",
   apply(ctx) {
     const events = ctx.readEvents().map((e) => {
       if (e.type === "task.created" || e.type === "task.updated") {

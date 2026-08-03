@@ -31,6 +31,12 @@ export interface Migration {
   to: number;
   /** One line shown to the user, e.g. "rename `estMin` → `estimateMinutes`". */
   describe: string;
+  /**
+   * How to migrate to this version, for the user: what changed and what to do.
+   * `tempo upgrade` handles the data automatically, so this is context — a
+   * sentence, or a pointer to a doc/script (e.g. "see docs/migrations.md#v3").
+   */
+  guide?: string;
   apply(ctx: MigrationContext): void;
 }
 

@@ -9,6 +9,7 @@ export interface UpgradeStep {
   from: number;
   to: number;
   describe: string;
+  guide?: string;
 }
 
 export interface UpgradeResult {
@@ -101,7 +102,37 @@ export function upgradeStore(paths: Paths, opts: UpgradeOptions = {}): UpgradeRe
   for (const m of plan) {
     m.apply(ctx);
     writeStoreVersion(paths, m.to); // record progress so a crash mid-chain is resumable
-    applied.push({ from: m.from, to: m.to, describe: m.describe });
+    applied.push({ from: m.from, to: m.to, describe: m.describe, guide: m.guide });
   }
   return { from, to: target, applied, backup };
+}
+
+export interface PendingPlan {
+  /** The store's currently recorded version. */
+  from: number;
+  /** The version this Tempo would bring it to. */
+  target: number;
+  /** True when the store is NEWER than this Tempo understands (needs a Tempo update). */
+  newer: boolean;
+  /** Ordered steps remaining to reach `target` (empty when up to date or newer). */
+  steps: UpgradeStep[];
+}
+
+/**
+ * Inspect (without touching the store) how many steps — and which — are needed
+ * to bring it up to date. Powers "you are N versions behind" messaging in
+ * `tempo check` / `tempo upgrade`.
+ */
+export function pendingMigrations(paths: Paths, opts: { migrations?: Migration[]; target?: number } = {}): PendingPlan {
+  const migrations = opts.migrations ?? MIGRATIONS;
+  const target = opts.target ?? STORE_VERSION;
+  const from = Math.max(readStoreVersion(paths), 1);
+  if (from >= target) return { from, target, newer: from > target, steps: [] };
+  const steps = planMigrations(migrations, from, target).map((m) => ({
+    from: m.from,
+    to: m.to,
+    describe: m.describe,
+    guide: m.guide,
+  }));
+  return { from, target, newer: false, steps };
 }

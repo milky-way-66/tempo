@@ -10,6 +10,7 @@ export default defineMigration({
   from: 1,
   to: 2,
   describe: "replace task `imp` (high/med/low) with `importance` (1–5); urgency defaults to 3",
+  guide: "imp→importance: high=5, med=3, low=1. Automatic — see docs/migrations.md#v1--v2--importanceurgency-scores",
   apply(ctx) {
     const events = ctx.readEvents().map((e) => {
       if ((e.type === "task.created" || e.type === "task.updated") && "imp" in e) {
