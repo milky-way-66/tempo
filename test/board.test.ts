@@ -3,7 +3,8 @@ import { mkdtempSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { Engine } from "../src/core/engine";
-import { metricsMarkdown } from "../src/core/report";
+import { agentBoard } from "../src/core/agent_board";
+import { boardHtml } from "../src/core/board_html";
 import { replay } from "../src/core/replay";
 import { ConfigSchema, type Paths } from "../src/core/config";
 import type { Event } from "../src/types";
@@ -18,124 +19,123 @@ function tmpStore(): Paths {
     gitattributesFile: join(home, ".gitattributes"),
   };
 }
+const agentFile = (paths: Paths) => join(dirname(paths.home), "agent-board.md");
+const htmlFile = (paths: Paths) => join(dirname(paths.home), "board.html");
 
-describe("board.md", () => {
-  it("is (re)written after each event with the current state", () => {
+describe("board files", () => {
+  it("writes both agent-board.md and board.html after each event, dropping board.md", () => {
     const paths = tmpStore();
-    const boardFile = join(dirname(paths.home), "board.md"); // repo root, beside .tempo
     const e = new Engine(paths);
 
-    e.add({ title: "Auth bug", importance: 5, project: "api", deadline: "2026-08-10" });
-    expect(existsSync(boardFile)).toBe(true);
-    let md = readFileSync(boardFile, "utf8");
-    expect(md).toContain("# Tempo Board");
+    e.add({ title: "Auth bug", importance: 5, urgency: 5, project: "api", deadline: "2026-08-10" });
+    expect(existsSync(agentFile(paths))).toBe(true);
+    expect(existsSync(htmlFile(paths))).toBe(true);
+    expect(existsSync(join(dirname(paths.home), "board.md"))).toBe(false); // no legacy file
+    expect(e.agentBoardFile()).toBe(agentFile(paths));
+    expect(e.htmlFile()).toBe(htmlFile(paths));
+
+    const md = readFileSync(agentFile(paths), "utf8");
+    expect(md).toContain("# Tempo — Agent Board");
     expect(md).toContain("Auth bug");
-    expect(md).toContain("⚑"); // high importance
-    expect(md).toContain("_[api]_"); // project tag
-    expect(md).toContain("📋 To Do (1)");
+    expect(md).toContain("class A"); // importance 5 + urgency 5 → class A
+    expect(md).toContain("### To Do (1)");
 
+    const html = readFileSync(htmlFile(paths), "utf8");
+    expect(html).toContain("<!doctype html>");
+    expect(html).toContain("Auth bug");
+  });
+
+  it("reflects status transitions in the agent board", () => {
+    const paths = tmpStore();
+    const e = new Engine(paths);
+    e.add({ title: "Auth bug", importance: 5 });
     e.start({ query: "auth" });
-    md = readFileSync(boardFile, "utf8");
-    expect(md).toContain("🔨 Doing (1)");
-    expect(md).toContain("📋 To Do (0)");
-
+    expect(readFileSync(agentFile(paths), "utf8")).toContain("### Doing (1)");
     e.stop({ query: "auth" });
-    md = readFileSync(boardFile, "utf8");
-    expect(md).toContain("✅ Done (1)");
+    expect(readFileSync(agentFile(paths), "utf8")).toContain("### Done (1)");
   });
 
-  it("renders a valid grid even with an empty log", () => {
-    const paths = tmpStore();
-    new Engine(paths).renderBoard();
-    const md = readFileSync(join(dirname(paths.home), "board.md"), "utf8");
-    expect(md).toContain("# Tempo Board");
-    expect(md).toContain("**0** tasks");
-    expect(md).toMatch(/\| ---/); // table separator present
-    expect(md).toContain("## Metrics");
-    expect(md).toContain("No time logged yet");
-  });
-
-  it("writes board.md at the repo root, not inside .tempo", () => {
+  it("agent board is text-only — no charts, mermaid, or unicode bars", () => {
     const paths = tmpStore();
     const e = new Engine(paths);
-    e.add({ title: "T", importance: 3 });
-    expect(existsSync(join(dirname(paths.home), "board.md"))).toBe(true);
-    expect(existsSync(join(paths.home, "board.md"))).toBe(false);
-    expect(e.boardFile()).toBe(join(dirname(paths.home), "board.md"));
+    e.add({ title: "T", importance: 3, est: "2h" });
+    const md = readFileSync(agentFile(paths), "utf8");
+    expect(md).not.toContain("```mermaid");
+    expect(md).not.toMatch(/[█░▁▂▃▄▅▆▇]/); // no bar/sparkline glyphs
   });
 
-  it("puts a backdated start (timed before its create) in Doing, not To Do", () => {
+  it("puts a backdated start (timed before its create) in Doing", () => {
     const paths = tmpStore();
     const e = new Engine(paths);
-    e.add({ title: "Fix data source page bug", importance: 5, project: "api" }); // created live (now)
-    e.start({ query: "fix-data", at: "2020-01-01T09:00:00Z" }); // backdated well before the create
+    e.add({ title: "Fix data source page bug", importance: 5, project: "api" });
+    e.start({ query: "fix-data", at: "2020-01-01T09:00:00Z" });
 
     const cols = e.board().columns;
     expect(cols.doing.map((t) => t.id)).toContain("fix-data-source-page-bug");
-    expect(cols.todo.map((t) => t.id)).not.toContain("fix-data-source-page-bug");
-    expect(e.check().ok).toBe(true); // no false "started before created"
-
-    const md = readFileSync(join(dirname(paths.home), "board.md"), "utf8");
-    // board.md must agree with the live board: the task is under Doing.
-    const doingCol = md.split("\n").find((l) => l.includes("fix-data-source-page-bug"));
-    expect(doingCol).toBeTruthy();
-    expect(e.board().columns.doing.length).toBe(1);
+    expect(e.check().ok).toBe(true);
+    const md = readFileSync(agentFile(paths), "utf8");
+    expect(md).toContain("### Doing (1)");
+    expect(md).toContain("fix-data-source-page-bug");
   });
 
-  it("re-renders board.md on an idempotent start (already active)", () => {
+  it("re-renders on an idempotent start (already active)", () => {
     const paths = tmpStore();
-    const boardFile = join(dirname(paths.home), "board.md");
     const e = new Engine(paths);
     e.add({ title: "T", importance: 3 });
     e.start({ query: "t" });
-    // wipe the snapshot, then a no-op start should rebuild it
-    rmSync(boardFile);
+    rmSync(agentFile(paths));
     const r = e.start({ query: "t" }) as { alreadyActive?: boolean };
     expect(r.alreadyActive).toBe(true);
-    expect(existsSync(boardFile)).toBe(true);
+    expect(existsSync(agentFile(paths))).toBe(true);
   });
 });
 
 describe("board — WBS hierarchy & rollup", () => {
-  it("nests children under their parent in the Work Breakdown tree", () => {
+  it("nests children under their parent in the Work breakdown outline", () => {
     const paths = tmpStore();
-    const boardFile = join(dirname(paths.home), "board.md");
     const e = new Engine(paths);
     e.add({ title: "Create project workflow", importance: 5, project: "api", est: "8h" });
     e.add({ title: "Create onboarding workflow", importance: 3, est: "3h", parent: "create-project-workflow" });
 
-    const md = readFileSync(boardFile, "utf8");
-    expect(md).toContain("## Work Breakdown");
-    const lines = md.split("\n");
+    const md = readFileSync(agentFile(paths), "utf8");
+    expect(md).toContain("## Work breakdown");
+    // scope to the Work-breakdown outline (the task ids also appear under Tasks by status)
+    const lines = md.slice(md.indexOf("## Work breakdown")).split("\n");
     const parent = lines.findIndex((l) => l.includes("`create-project-workflow`") && l.trimStart().startsWith("-"));
     const child = lines.findIndex((l) => l.includes("`create-onboarding-workflow`") && l.trimStart().startsWith("-"));
     expect(parent).toBeGreaterThanOrEqual(0);
-    expect(child).toBeGreaterThan(parent); // child rendered after parent
-    // child is indented deeper than the parent
+    expect(child).toBeGreaterThan(parent);
     const indent = (l: string) => l.length - l.trimStart().length;
     expect(indent(lines[child])).toBeGreaterThan(indent(lines[parent]));
   });
+});
 
-  it("renders a project rollup with estimate vs logged", () => {
-    const paths = tmpStore();
-    const e = new Engine(paths);
-    e.add({ title: "Task", importance: 3, project: "api", est: "2h" });
-    const md = readFileSync(join(dirname(paths.home), "board.md"), "utf8");
-    expect(md).toContain("## Project rollup");
-    expect(md).toContain("api");
+describe("board.html — visual", () => {
+  it("plots an SVG scatter dot per open task", () => {
+    const config = ConfigSchema.parse({ timezone: "UTC" });
+    const p = replay([
+      { id: "c1", at: "2026-08-03T09:00:00Z", logged_at: "2026-08-03T09:00:00Z", source: "live", type: "task.created", task: "ship", title: "Ship", importance: 5, urgency: 5, tags: [] },
+      { id: "c2", at: "2026-08-03T09:00:00Z", logged_at: "2026-08-03T09:00:00Z", source: "live", type: "task.created", task: "tidy", title: "Tidy", importance: 2, urgency: 1, tags: [] },
+    ] as unknown as Event[]);
+    const html = boardHtml(p, config, "2026-08-03T10:00:00Z");
+    expect(html).toContain("Priority map");
+    expect(html).toContain("echarts"); // charting lib via CDN
+    expect(html).toContain('id="scatter"');
+    expect(html).toContain("echarts.init");
+    expect(html).toContain('"title":"Ship"'); // task data embedded for the chart
+    expect(html).toContain('"title":"Tidy"');
   });
 });
 
-describe("board metrics", () => {
-  // Deterministic: fixed UTC "now" and past spans so window math isn't flaky.
+describe("agent board — time & priority", () => {
   const config = ConfigSchema.parse({ timezone: "UTC" });
-  const now = "2026-08-05T17:00:00Z"; // a Wednesday afternoon
+  const now = "2026-08-05T17:00:00Z"; // Wednesday afternoon
 
   const ev = (o: Partial<Event> & { id: string; at: string; type: Event["type"] }) =>
     ({ logged_at: o.at, source: "live", ...o }) as Event;
 
   const events: Event[] = [
-    ev({ id: "c1", at: "2026-08-05T09:00:00Z", type: "task.created", task: "api-work", title: "API work", importance: 5, tags: [], project: "api", estMin: 120 } as Partial<Event> as never),
+    ev({ id: "c1", at: "2026-08-05T09:00:00Z", type: "task.created", task: "api-work", title: "API work", importance: 5, tags: [], project: "api", estMin: 120 } as never),
     ev({ id: "s1", at: "2026-08-05T09:00:00Z", type: "task.started", task: "api-work" } as never),
     ev({ id: "e1", at: "2026-08-05T11:00:00Z", type: "task.stopped", task: "api-work", status: "done" } as never),
     ev({ id: "c2", at: "2026-08-05T13:00:00Z", type: "task.created", task: "docs", title: "Docs", importance: 1, tags: [], project: "docs" } as never),
@@ -143,22 +143,15 @@ describe("board metrics", () => {
     ev({ id: "e2", at: "2026-08-05T14:00:00Z", type: "task.stopped", task: "docs", status: "done" } as never),
   ];
 
-  it("renders totals, distribution by project and quadrant, and estimates", () => {
-    const p = replay(events);
-    const md = metricsMarkdown(p, config, now);
-
-    expect(md).toContain("## Metrics");
-    // totals: 3h gross across the week
-    expect(md).toContain("Time by project");
+  it("describes totals, project split, and priority mix in prose", () => {
+    const md = agentBoard(replay(events), config, now);
+    expect(md).toContain("## Time & priority");
+    expect(md).toContain("By project:");
     expect(md).toContain("api");
     expect(md).toContain("docs");
-    expect(md).toContain("█"); // share bar rendered
-    // priority split across the two 1–5 axes + the value-vs-firefighting headline
-    expect(md).toContain("Time mix");
-    expect(md).toContain("Time by importance");
-    expect(md).toContain("Time by urgency");
-    // estimate vs actual for the done, estimated task
-    expect(md).toContain("Estimates vs actual");
+    expect(md).toContain("Priority mix:");
+    expect(md).toContain("By importance:");
+    expect(md).toContain("Estimates vs actual:");
     expect(md).toContain("api-work");
   });
 });

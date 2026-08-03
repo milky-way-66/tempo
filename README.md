@@ -84,17 +84,17 @@ to the log; **you** commit `.tempo/` whenever you commit your work. `.gitattribu
 `merge=union` so multiple machines merge cleanly; replay dedups by event id and sorts by time, so
 order and duplicates never corrupt the numbers.
 
-`board.md` (at the repo root, beside `.tempo/`) is a live Markdown dashboard, **regenerated after
-every logged change** — open it in your editor to watch it update as you narrate your work. It holds:
+Two board files (at the repo root, beside `.tempo/`) are **regenerated after every logged change**:
 
-- a **kanban** (To Do · Doing · Done) where each card shows its A–D priority class, importance/urgency
-  scores, a progress meter, and a deadline warning (⏰ due ≤2d · ⚠️ overdue);
-- a **project rollup** — lifetime estimate vs logged vs remaining per project;
-- a **Work Breakdown** — the WBS tree (parent → child, indented) scoped to a rolling 3-week window
-  (last · this · next), each row carrying a weekly-load sparkline (time series) and rolled-up metrics;
-- a **metrics** section: today/this-week totals with multitask factor, time by project, the
-  value-vs-firefighting time mix, a Mermaid **priority map** (importance × urgency), per-axis time
-  splits, an open-sprint plan check, and estimate-vs-actual for finished tasks.
+- **`board.html`** — the visual board (Clean-Minimalism theme): an interactive importance × urgency
+  **scatter** (ECharts via CDN — hover for details, drag to zoom), a colour-coded kanban with A–D
+  class, scores, progress meters and deadline warnings, a project rollup, and the 3-week WBS tree with
+  weekly-load sparklines. Open it in a browser. _(Loads ECharts from a CDN, so it needs a connection
+  to render the chart.)_
+- **`agent-board.md`** — a **text-only** companion for agents/git/diff: tasks by status, a work-
+  breakdown outline with subtree rollups, a described schedule (active now, worked this week, overdue,
+  upcoming deadlines), and prose time & priority metrics (project split, value-vs-firefighting mix,
+  per-axis splits, estimate-vs-actual). No charts or diagrams — Claude reads it directly.
 
 `.tempo/version` records the on-disk store format version. `tempo migrate` upgrades an older store to
 the current version, reporting each step; `tempo check` prints the current `storeVersion`. Override

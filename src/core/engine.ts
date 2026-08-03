@@ -9,12 +9,13 @@ import { resolve } from "./resolve.js";
 import {
   board,
   boardText,
-  boardMarkdown,
   report,
   reportText,
   stopVerdict,
   type WindowKind,
 } from "./report.js";
+import { agentBoard } from "./agent_board.js";
+import { boardHtml } from "./board_html.js";
 import { check as runCheck } from "./check.js";
 import { newId, slugify } from "./ids.js";
 import type {
@@ -81,22 +82,37 @@ export class Engine {
     // themselves, so Tempo does not auto-commit.
   }
 
-  /** Absolute path of the board file — at the repo root, beside the `.tempo/` store. */
-  boardFile(): string {
-    return join(dirname(this.paths.home), "board.md");
+  private repoRoot(): string {
+    return dirname(this.paths.home);
   }
 
-  /** Rewrite `board.md` (repo root) from the current projection. Called after every event. */
+  /** The text-only agent board (repo root, beside `.tempo/`). */
+  agentBoardFile(): string {
+    return join(this.repoRoot(), "agent-board.md");
+  }
+
+  /** The visual HTML board (repo root). */
+  htmlFile(): string {
+    return join(this.repoRoot(), "board.html");
+  }
+
+  /**
+   * Rewrite both board files from the current projection. Called after every
+   * event: `board.html` is the rich visual view; `agent-board.md` is the
+   * text-only companion for agents/git.
+   */
   renderBoard(): void {
-    const md = boardMarkdown(this.projection, this.config, this.nowISO());
-    writeFileSync(this.boardFile(), md, "utf8");
-    // Remove the legacy in-store copy that older versions wrote to `.tempo/board.md`.
-    const legacy = join(this.paths.home, "board.md");
-    if (legacy !== this.boardFile() && existsSync(legacy)) {
-      try {
-        unlinkSync(legacy);
-      } catch {
-        /* best-effort */
+    const now = this.nowISO();
+    writeFileSync(this.agentBoardFile(), agentBoard(this.projection, this.config, now), "utf8");
+    writeFileSync(this.htmlFile(), boardHtml(this.projection, this.config, now), "utf8");
+    // Remove legacy board.md copies (repo root + old in-store) from earlier versions.
+    for (const legacy of [join(this.repoRoot(), "board.md"), join(this.paths.home, "board.md")]) {
+      if (existsSync(legacy)) {
+        try {
+          unlinkSync(legacy);
+        } catch {
+          /* best-effort */
+        }
       }
     }
   }

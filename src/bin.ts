@@ -51,10 +51,11 @@ function nextSteps(paths: Paths, link: LinkResult): string {
   return [
     "",
     "The store lives inside this repo — commit it with your normal git workflow:",
-    "  git add .tempo CLAUDE.md board.md && git commit -m \"tempo: init\"",
+    "  git add .tempo CLAUDE.md board.html agent-board.md && git commit -m \"tempo: init\"",
     "",
-    `Your live board is written to ${join(dirname(paths.home), "board.md")} (repo root)`,
-    "  — it auto-updates after every logged change; open it to watch your work.",
+    `Your live boards are written to ${dirname(paths.home)} (repo root):`,
+    "  board.html (visual, open in a browser) and agent-board.md (text)",
+    "  — both auto-update after every logged change.",
     "",
     "Register the MCP server with Claude Code (run from this repo):",
     "  claude mcp add tempo -- npx -y @milkyway-666/tempo mcp",
@@ -72,7 +73,7 @@ function doInit(): void {
   writeConfigIfAbsent(paths);
   writeStoreVersion(paths);
   copyAssets(paths);
-  new Engine(paths).renderBoard(); // seed an (empty) board.md so the file exists
+  new Engine(paths).renderBoard(); // seed the (empty) board files so they exist
   const link = ensureRitualsLinked(paths); // wire the rituals into repo-root CLAUDE.md memory
   process.stdout.write(
     `Tempo initialized at ${paths.home} (store v${STORE_VERSION})` + "\n" + nextSteps(paths, link),
@@ -105,7 +106,7 @@ function doMigrate(): void {
 
   // Bring the copied data up to the current store format, reporting each step.
   const upgrade = upgradeStore(paths, { stamp: stampNow() });
-  new Engine(paths).renderBoard(); // render board.md from the migrated log
+  new Engine(paths).renderBoard(); // re-render boards from the migrated log
   const upgradeLines =
     upgrade.applied.length === 0
       ? [`Store is at v${upgrade.to}; no format changes were needed.`]
