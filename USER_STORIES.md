@@ -203,6 +203,28 @@ them, **so that** priority reflects reality as deadlines approach.
 
 ## Epic C — Reports (the behavior-changing payoff)
 
+### C0 — Daily check-in: am I on track for the deadline?
+**As an** Analyst, **I want** a single daily view showing how the work is progressing — what's in
+flight, what's done, what's left, and whether I'm ahead or behind — **so that** I catch slippage
+early enough to change course and still hit the deadline.
+
+> The user's second story: *"Every day I check the board and see how work is progressing — the
+> current work and what's left — so I can tell if I'm late or need to change something to keep the
+> deadline."* This is the **daily** companion to the per-sprint burndown (P5): a fast, one-glance
+> "on track?" answer, composed from views + plan + a deadline projection.
+
+**Acceptance**
+- One command (`kaban standup` / `kaban day`) shows, from the log alone: current task(s) in flight,
+  completed today/this period, and remaining planned leaves with their estimates.
+- It projects remaining estimate against remaining capacity in the period and states a verdict —
+  e.g. `on track` / `~4h behind → deadline at risk` — rather than leaving the arithmetic to the
+  human.
+- When behind, it names the pressure source (scope added by interruptions vs estimates running
+  over) so the "what to change" decision has evidence (drop / defer / renegotiate — see E5).
+- Every number is derived and reproducible; two runs on the same log agree.
+- Composes B1 (board), P5 (burndown), and B2 (urgency/deadline) — it is a lens over them, not new
+  stored state.
+
 ### C1 — End-of-day summary
 **As an** Analyst, **I want** a one-line EOD summary, **so that** I close the day with a signal
 without reading raw data.
