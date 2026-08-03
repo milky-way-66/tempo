@@ -2,6 +2,10 @@
 
 All notable changes to Tempo, newest first.
 
+## 0.1.6 — 2026-08-03
+
+- board.html: Gantt calendar timeline, section reorder, centered priority map (35f7438)
+
 ## 0.1.5 — 2026-08-03
 
 - Split board into visual board.html + text-only agent-board.md (3a29799)
