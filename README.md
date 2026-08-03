@@ -89,12 +89,16 @@ order and duplicates never corrupt the numbers.
 
 Two board files (at the repo root, beside `.tempo/`) are **regenerated after every logged change**:
 
-- **`board.html`** — the visual board (Clean-Minimalism theme, ECharts via CDN): a colour-coded kanban
-  (A–D category, flags, progress, deadline warnings), a project rollup, a **Work Breakdown calendar**
-  (Gantt — planned timespans from estimates + logged work, one column per day, 2-week default view), a
-  metrics panel, an **important × urgent** quadrant map (axes crossing at centre), a **time-by-category**
-  breakdown, and a sprint plan. Open it in a browser. _(Loads ECharts from a CDN, so it needs a
-  connection to render the charts.)_
+- **`board.html`** — the visual board (Clean-Minimalism theme): a colour-coded kanban (A–D category,
+  flags, ⏱ estimate, progress, deadline warnings), a project rollup, a **Work Breakdown Gantt**
+  ([Frappe Gantt](https://github.com/frappe/gantt) — one bar per task = planned timespan with a
+  progress fill = % logged, Day/Week/Month view modes, today marker, weekend shading, hover popups), a
+  **value-metrics** panel (focus on important work, deep-work %, firefighting %, delivered this week,
+  estimate accuracy, at-risk), an **important × urgent** quadrant map (axes crossing at centre), a
+  **time-by-category** breakdown, and a sprint plan. The priority map has a **filter** (currently
+  active · all tasks · recent 30 days), kanban columns scroll independently when long, and icons come
+  from Bootstrap Icons. Open it in a browser. _(Loads ECharts + Frappe Gantt + Bootstrap Icons from a
+  CDN, so it needs a connection to render the charts and icons.)_
 - **`agent-board.md`** — a **text-only** companion for agents/git/diff: tasks by status, a work-
   breakdown outline with subtree rollups, a described schedule (active now, worked this week, overdue,
   upcoming deadlines), and prose time & priority metrics (project split, category mix, time-by-category,

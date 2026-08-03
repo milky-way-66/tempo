@@ -125,6 +125,34 @@ describe("board.html — visual", () => {
     expect(html).toContain('"title":"Ship"'); // task data embedded for the chart
     expect(html).toContain('"title":"Tidy"');
   });
+
+  it("renders the Work Breakdown as a Frappe Gantt (task titles, not slugs)", () => {
+    const config = ConfigSchema.parse({ timezone: "UTC" });
+    const p = replay([
+      { id: "c1", at: "2026-08-03T09:00:00Z", logged_at: "2026-08-03T09:00:00Z", source: "live", type: "task.created", task: "ship-it", title: "Ship it", important: true, urgent: true, estMin: 120, deadline: "2026-08-10", tags: [] },
+    ] as unknown as Event[]);
+    const html = boardHtml(p, config, "2026-08-03T10:00:00Z");
+    expect(html).toContain("frappe-gantt@1.2.2"); // gantt lib via CDN
+    expect(html).toContain("new Gantt(el, tasks");
+    expect(html).toContain('"name":"Ship it"'); // readable title, not the slug
+    expect(html).toContain('"progress":'); // planned bar with % logged
+    expect(html).toContain("cat-A"); // category color class
+  });
+
+  it("shows value KPIs in the metrics section", () => {
+    const config = ConfigSchema.parse({ timezone: "UTC" });
+    const p = replay([
+      { id: "c1", at: "2026-08-03T02:00:00Z", logged_at: "2026-08-03T02:00:00Z", source: "live", type: "task.created", task: "a", title: "A", important: true, urgent: false, estMin: 120, tags: [] },
+      { id: "s1", at: "2026-08-03T02:00:00Z", logged_at: "2026-08-03T02:00:00Z", source: "live", type: "task.started", task: "a" },
+      { id: "e1", at: "2026-08-03T04:00:00Z", logged_at: "2026-08-03T04:00:00Z", source: "live", type: "task.stopped", task: "a", status: "done" },
+    ] as unknown as Event[]);
+    const html = boardHtml(p, config, "2026-08-03T10:00:00Z");
+    expect(html).toContain("Focus");
+    expect(html).toContain("Firefighting");
+    expect(html).toContain("Delivered");
+    expect(html).toContain("on important work");
+    expect(html).not.toContain("Multitask"); // old low-value tile gone
+  });
 });
 
 describe("agent board — time & priority", () => {
