@@ -2,6 +2,10 @@
 
 All notable changes to Tempo, newest first.
 
+## 0.1.11 — 2026-08-03
+
+- Gantt: size bars by working days so short tasks are visible (8421118)
+
 ## 0.1.10 — 2026-08-03
 
 - Fix Work Breakdown Gantt not rendering any task bars (d6b6c4d)
