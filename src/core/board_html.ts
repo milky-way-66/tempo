@@ -3,7 +3,7 @@ import type { Projection, Task } from "../types.js";
 import type { Config } from "./config.js";
 import { taskGrossMin, collectIntervals } from "./replay.js";
 import { formatMin } from "./time.js";
-import { board, quadrant } from "./report.js";
+import { board, quadrant, report, windowFor } from "./report.js";
 
 // A self-contained HTML companion to agent-board.md. The agent board stays the
 // agent/memory-readable source of truth; this is the rich visual view — an
@@ -91,10 +91,13 @@ function scatter(p: Projection, project?: string): string {
       var fg = dark ? '#a0a4ab' : '#60646c', line = dark ? '#26282b' : '#e6e8eb';
       var C = { A:'#c96a6a', B:'#5a9b7d', C:'#c2a15c', D:'#9aa1a9' };
       var chart = echarts.init(el, null, { renderer:'svg' });
-      // jitter identical (u,i) points so they don't fully overlap
+      // Centre the plot: map the 1–5 scores to a signed −2…2 scale (3 → 0) so
+      // the axes cross at the middle. Tick labels are mapped back to 1–5.
+      var M = 2.25; // axis extent
+      var lbl = function(v){ return String(Math.round(v) + 3); };
       var data = pts.map(function(pt, idx){
-        var j = (((idx % 3) - 1) * 0.07);
-        return { value:[pt.u + j, pt.i - j], pt:pt, itemStyle:{ color:pt.color, borderColor:dark?'#18191b':'#fff', borderWidth:1.5 } };
+        var j = (((idx % 3) - 1) * 0.14);
+        return { value:[(pt.u - 3) + j, (pt.i - 3) - j], pt:pt, itemStyle:{ color:pt.color, borderColor:dark?'#18191b':'#fff', borderWidth:1.5 } };
       });
       var band = function(name, col, x0, y0, x1, y1, pos){
         return [{ name:name, xAxis:x0, yAxis:y0, itemStyle:{ color:col, opacity:0.08 }, label:{ show:true, color:col, fontWeight:700, position:pos, fontSize:11 } }, { xAxis:x1, yAxis:y1 }];
@@ -102,16 +105,18 @@ function scatter(p: Projection, project?: string): string {
       chart.setOption({
         grid:{ left:60, right:26, top:22, bottom:52 },
         tooltip:{ trigger:'item', formatter:function(o){ var q=o.data.pt; return '<b>'+q.title+'</b><br/>importance '+q.i+' · urgency '+q.u+' · class '+q.k+(q.project?'<br/>project '+q.project:''); } },
-        xAxis:{ name:'Urgency →', nameLocation:'middle', nameGap:30, min:0.5, max:5.5, interval:1, axisLabel:{ color:fg }, nameTextStyle:{ color:fg, fontWeight:600 }, splitLine:{ lineStyle:{ color:line } } },
-        yAxis:{ name:'Importance →', nameLocation:'middle', nameGap:34, min:0.5, max:5.5, interval:1, axisLabel:{ color:fg }, nameTextStyle:{ color:fg, fontWeight:600 }, splitLine:{ lineStyle:{ color:line } } },
+        xAxis:{ name:'Urgency →', nameLocation:'middle', nameGap:30, min:-M, max:M, interval:1, axisLabel:{ color:fg, formatter:lbl }, nameTextStyle:{ color:fg, fontWeight:600 }, splitLine:{ lineStyle:{ color:line } } },
+        yAxis:{ name:'Importance →', nameLocation:'middle', nameGap:34, min:-M, max:M, interval:1, axisLabel:{ color:fg, formatter:lbl }, nameTextStyle:{ color:fg, fontWeight:600 }, splitLine:{ lineStyle:{ color:line } } },
         series:[{
           type:'scatter', symbolSize:20, data:data, emphasis:{ scale:1.35 },
           markArea:{ silent:true, data:[
-            band('B · schedule', C.B, 0.5, 3.5, 3.5, 5.5, 'insideTopLeft'),
-            band('A · do first', C.A, 3.5, 3.5, 5.5, 5.5, 'insideTopRight'),
-            band('D · eliminate', C.D, 0.5, 0.5, 3.5, 3.5, 'insideBottomLeft'),
-            band('C · delegate', C.C, 3.5, 0.5, 5.5, 3.5, 'insideBottomRight')
-          ] }
+            band('B · schedule', C.B, -M, 0, 0, M, 'insideTopLeft'),
+            band('A · do first', C.A, 0, 0, M, M, 'insideTopRight'),
+            band('D · eliminate', C.D, -M, -M, 0, 0, 'insideBottomLeft'),
+            band('C · delegate', C.C, 0, -M, M, 0, 'insideBottomRight')
+          ] },
+          // dividing axes crossing at the centre (score 3 → 0)
+          markLine:{ silent:true, symbol:'none', label:{ show:false }, lineStyle:{ color:fg, width:1.25, opacity:0.55 }, data:[ { xAxis:0 }, { yAxis:0 } ] }
         }]
       });
       window.addEventListener('resize', function(){ chart.resize(); });
@@ -183,22 +188,24 @@ function rollup(p: Projection, nowISO: string, project?: string): string {
   return `<section class="panel"><h2>Project rollup</h2><table class="tbl"><thead><tr><th>Project</th><th>Est</th><th>Logged</th><th>Rem</th><th>Progress</th></tr></thead><tbody>${body}${total}</tbody></table></section>`;
 }
 
-// ---- WBS tree (3-week window, weekly load) ----
+// ---- Work Breakdown calendar (Gantt) ----
 
+// The rolling 3-week window (last · this · next) used to scope the timeline.
 function threeWeek(nowISO: string, config: Config): { start: number; end: number }[] {
   const cur = toDT(nowISO, config).startOf("week");
   const mk = (d: DateTime) => ({ start: d.toMillis(), end: d.plus({ weeks: 1 }).toMillis() });
   return [mk(cur.minus({ weeks: 1 })), mk(cur), mk(cur.plus({ weeks: 1 }))];
 }
-function weeklyLoad(t: Task, nowISO: string, weeks: { start: number; end: number }[]): number[] {
-  return weeks.map((w) => {
-    let s = 0;
-    for (const iv of collectIntervals([t], nowISO, w.start, w.end)) s += (iv.end - iv.start) / 60000;
-    return s;
-  });
+
+/** Format an epoch instant for the Gantt tooltip. */
+function fmtInstant(ms: number, config: Config): string {
+  return toDT(new Date(ms).toISOString(), config).toFormat("LLL d, HH:mm");
 }
 
-function wbs(p: Projection, config: Config, nowISO: string, project?: string): string {
+// The Work Breakdown as a calendar timeline (ECharts Gantt): each task is a row
+// in WBS order (children indented), work spans are bars over real calendar
+// dates, deadlines are diamonds, and a dashed line marks "today".
+function gantt(p: Projection, config: Config, nowISO: string, project?: string): string {
   const weeks = threeWeek(nowISO, config);
   const nowMs = Date.parse(nowISO);
   const lo = weeks[0].start,
@@ -218,6 +225,7 @@ function wbs(p: Projection, config: Config, nowISO: string, project?: string): s
       cur = p.tasks.get(cur)?.parent;
     }
   }
+  // Row order: DFS (roots then children), tracking depth for indentation.
   const children = new Map<string, string[]>();
   const roots: string[] = [];
   for (const id of p.order) {
@@ -226,54 +234,169 @@ function wbs(p: Projection, config: Config, nowISO: string, project?: string): s
     if (t.parent && inScope.has(t.parent)) (children.get(t.parent) ?? children.set(t.parent, []).get(t.parent)!).push(id);
     else roots.push(id);
   }
-  const roll = new Map<string, { est: number; logged: number; week: number[] }>();
-  const compute = (id: string): { est: number; logged: number; week: number[] } => {
-    const t = p.tasks.get(id)!;
-    const acc = { est: t.estMin ?? 0, logged: taskGrossMin(t, nowISO), week: weeklyLoad(t, nowISO, weeks) };
-    for (const c of children.get(id) ?? []) {
-      const cr = compute(c);
-      acc.est += cr.est;
-      acc.logged += cr.logged;
-      acc.week = acc.week.map((v, i) => v + cr.week[i]);
-    }
-    roll.set(id, acc);
-    return acc;
+  const order: { id: string; depth: number }[] = [];
+  const walk = (id: string, depth: number) => {
+    order.push({ id, depth });
+    for (const c of children.get(id) ?? []) walk(c, depth + 1);
   };
-  for (const r of roots) compute(r);
-  const maxWeek = Math.max(1, ...[...roll.values()].flatMap((r) => r.week));
+  for (const r of roots) walk(r, 0);
 
-  const node = (id: string): string => {
+  const z = zoneOf(config);
+  const labels: string[] = [];
+  const spans: { value: [number, number, number]; itemStyle: { color: string; opacity: number; borderRadius?: number }; info: string }[] = [];
+  const deadlines: { value: [number, number]; itemStyle: { color: string }; info: string }[] = [];
+  let minMs = lo,
+    maxMs = hi;
+  order.forEach(({ id, depth }, row) => {
     const t = p.tasks.get(id)!;
-    const kids = children.get(id) ?? [];
-    const agg = roll.get(id)!;
-    const est = kids.length ? agg.est : t.estMin ?? 0;
-    const logged = kids.length ? agg.logged : taskGrossMin(t, nowISO);
-    const week = kids.length ? agg.week : weeklyLoad(t, nowISO, weeks);
     const c = cls(t);
-    const pct = est > 0 ? Math.min(100, Math.round((logged / est) * 100)) : undefined;
-    const metrics =
-      est > 0
-        ? `est ${formatMin(est)} · log ${formatMin(logged)} · rem ${formatMin(Math.max(0, est - logged))}`
-        : logged > 0
-          ? `log ${formatMin(logged)}`
-          : "";
-    const spark = week
-      .map((v, i) => `<span class="wk" title="${["last", "this", "next"][i]} ${formatMin(v)}"><span style="height:${Math.round((v / maxWeek) * 100)}%"></span></span>`)
-      .join("");
-    const bar = pct !== undefined ? `<div class="bar mini"><span style="width:${pct}%;background:${c.color}"></span></div><span class="pct">${pct}%</span>` : "";
-    const sub = kids.length ? `<ul>${kids.map(node).join("")}</ul>` : "";
-    return `<li>
-      <div class="node"><span class="badge sm" style="--c:${c.color}" title="${c.k}">${c.k}</span>
-        <code>${esc(t.id)}</code> <span class="nt">${esc(t.title)}</span>
-        <span class="nmeta">i${t.importance}·u${t.urgency}${t.project && !project ? ` · ${esc(t.project)}` : ""} ${metrics ? "· " + metrics : ""}</span>
-        ${bar}<span class="spark" title="weekly load: last · this · next">${spark}</span>${deadlineHtml(t, nowMs, config)}
-      </div>${sub}</li>`;
-  };
-  const total = [0, 0, 0];
-  for (const r of roots) for (let i = 0; i < 3; i++) total[i] += roll.get(r)!.week[i];
-  return `<section class="panel"><h2>Work Breakdown <span class="sub">· 3-week window</span></h2>
-    <p class="sub">Weekly load — last <b>${formatMin(total[0])}</b> · this <b>${formatMin(total[1])}</b> · next <b>${formatMin(total[2])}</b></p>
-    <ul class="tree">${roots.map(node).join("")}</ul></section>`;
+    labels.push("  ".repeat(depth) + (depth ? "└ " : "") + t.id);
+    for (const s of t.spans) {
+      const start = Date.parse(s.start);
+      const end = s.end ? Date.parse(s.end) : nowMs;
+      if (end <= start) continue;
+      minMs = Math.min(minMs, start);
+      maxMs = Math.max(maxMs, end);
+      spans.push({
+        value: [row, start, end],
+        itemStyle: { color: c.color, opacity: 0.85 },
+        info: `${esc(t.title)}<br/>${fmtInstant(start, config)} → ${fmtInstant(end, config)} · ${formatMin((end - start) / 60000)}`,
+      });
+    }
+    if (t.deadline && t.status !== "done") {
+      const dms = DateTime.fromISO(t.deadline, z ? { zone: z } : {}).endOf("day").toMillis();
+      minMs = Math.min(minMs, dms);
+      maxMs = Math.max(maxMs, dms);
+      deadlines.push({ value: [dms, row], itemStyle: { color: dms < nowMs ? "#c96a6a" : "#c2a15c" }, info: `${esc(t.id)} · deadline ${t.deadline}` });
+    }
+  });
+  const pad = 12 * 3600 * 1000;
+  const G = { labels, spans, deadlines, now: nowMs, xmin: minMs - pad, xmax: maxMs + pad };
+  const height = Math.max(200, order.length * 30 + 96);
+
+  return `
+  <section class="panel">
+    <h2>Work Breakdown <span class="sub">· calendar timeline</span></h2>
+    <p class="sub">Each row is a task (children indented); bars are logged work over calendar time. ◆ = deadline · dashed line = today · drag the slider to pan.</p>
+    <div id="gantt" style="width:100%;height:${height}px"></div>
+    <script>
+    (function(){
+      var G = ${jsonInline(G)};
+      var el = document.getElementById('gantt');
+      if(!el || typeof echarts === 'undefined') return;
+      var dark = matchMedia('(prefers-color-scheme: dark)').matches;
+      var fg = dark ? '#9a9a95' : '#6b6b66', line = dark ? '#232324' : '#ececea';
+      var chart = echarts.init(el, null, { renderer:'svg' });
+      function renderItem(params, api){
+        var ci = api.value(0);
+        var s = api.coord([api.value(1), ci]);
+        var e = api.coord([api.value(2), ci]);
+        var h = api.size([0,1])[1] * 0.52;
+        var rect = echarts.graphic.clipRectByRect(
+          { x:s[0], y:s[1]-h/2, width:Math.max(3, e[0]-s[0]), height:h },
+          { x:params.coordSys.x, y:params.coordSys.y, width:params.coordSys.width, height:params.coordSys.height }
+        );
+        return rect && { type:'rect', shape:Object.assign(rect,{ r:3 }), style:api.style() };
+      }
+      chart.setOption({
+        grid:{ left:158, right:26, top:14, bottom:60 },
+        tooltip:{ trigger:'item', formatter:function(p){ return (p.data && p.data.info) || ''; } },
+        xAxis:{ type:'time', min:G.xmin, max:G.xmax, axisLabel:{ color:fg, hideOverlap:true }, axisLine:{ lineStyle:{ color:line } }, splitLine:{ show:true, lineStyle:{ color:line } } },
+        yAxis:{ type:'category', data:G.labels, inverse:true, axisLabel:{ color:fg, fontSize:11, fontFamily:'ui-monospace,monospace' }, axisTick:{ show:false }, axisLine:{ show:false }, splitLine:{ show:true, lineStyle:{ color:line } } },
+        dataZoom:[{ type:'slider', xAxisIndex:0, height:16, bottom:26 }, { type:'inside', xAxisIndex:0 }],
+        series:[
+          { type:'custom', renderItem:renderItem, encode:{ x:[1,2], y:0 }, data:G.spans,
+            markLine:{ silent:true, symbol:'none', lineStyle:{ color:'#c96a6a', type:'dashed', width:1 }, data:[{ xAxis:G.now, label:{ formatter:'today', color:'#c96a6a', fontSize:10, position:'insideEndTop' } }] } },
+          { type:'scatter', symbol:'diamond', symbolSize:12, encode:{ x:0, y:1 }, data:G.deadlines, z:5 }
+        ]
+      });
+      window.addEventListener('resize', function(){ chart.resize(); });
+    })();
+    </script>
+  </section>`;
+}
+
+// ---- metrics, per-axis splits, sprint ----
+
+/** Gross minutes on a task within [lo, hi). */
+function grossIn(t: Task, nowISO: string, lo: number, hi: number): number {
+  let s = 0;
+  for (const iv of collectIntervals([t], nowISO, lo, hi)) s += (iv.end - iv.start) / 60000;
+  return s;
+}
+
+function metricsSection(p: Projection, config: Config, nowISO: string): string {
+  const today = report(p, config, nowISO, { window: "today", by: "project" });
+  const week = report(p, config, nowISO, { window: "week", by: "project" });
+  if (week.grossMin === 0 && today.grossMin === 0) {
+    return `<section class="panel"><h2>Metrics</h2><p class="sub">No time logged yet — start a task and it'll show up here.</p></section>`;
+  }
+  const wq = report(p, config, nowISO, { window: "week", by: "quadrant" });
+  const qm = new Map(wq.distribution);
+  const share = (q: string) => (wq.grossMin > 0 ? Math.round(((qm.get(q) ?? 0) / wq.grossMin) * 100) : 0);
+  const stat = (label: string, val: string) => `<div class="stat"><div class="sv">${val}</div><div class="sl">${label}</div></div>`;
+  const projRows = week.distribution
+    .map(([k, v]) => {
+      const pct = Math.round((v / week.grossMin) * 100);
+      return `<tr><td>${esc(k)}</td><td>${formatMin(v)}</td><td><div class="bar"><span style="width:${pct}%"></span></div> ${pct}%</td></tr>`;
+    })
+    .join("");
+  return `<section class="panel"><h2>Metrics <span class="sub">· ${esc(week.win.label)}</span></h2>
+    <div class="stats">
+      ${stat("Today", formatMin(today.netMin))}
+      ${stat("Week · net", formatMin(week.netMin))}
+      ${stat("Week · gross", formatMin(week.grossMin))}
+      ${stat("Multitask", "×" + week.multitaskFactor.toFixed(2))}
+      ${stat("Interruptions", String(week.interruptions))}
+    </div>
+    <div class="mix">
+      <span class="mi" style="--c:#5a9b7d">valuable ${share("Q2")}%</span>
+      <span class="mi" style="--c:#c96a6a">firefighting ${share("Q1")}%</span>
+      <span class="mi" style="--c:#c2a15c">interruptions ${share("Q3")}%</span>
+      <span class="mi" style="--c:#9aa1a9">low-value ${share("Q4")}%</span>
+    </div>
+    <table class="tbl"><thead><tr><th>Project</th><th>Time</th><th>Share</th></tr></thead><tbody>${projRows}</tbody></table>
+  </section>`;
+}
+
+function axisSection(p: Projection, config: Config, nowISO: string, axis: "importance" | "urgency", project?: string): string {
+  const win = windowFor("week", p, nowISO, config);
+  const m = new Map<number, number>();
+  let total = 0;
+  for (const id of p.order) {
+    const t = p.tasks.get(id)!;
+    if (project && t.project !== project) continue;
+    const g = grossIn(t, nowISO, win.start, win.end);
+    if (g <= 0) continue;
+    const k = axis === "importance" ? t.importance : t.urgency;
+    m.set(k, (m.get(k) ?? 0) + g);
+    total += g;
+  }
+  if (total <= 0) return "";
+  const rows: string[] = [];
+  for (let s = 5; s >= 1; s--) {
+    const v = m.get(s) ?? 0;
+    if (v <= 0) continue;
+    const pct = Math.round((v / total) * 100);
+    rows.push(`<tr><td>${s}</td><td>${formatMin(v)}</td><td><div class="bar"><span style="width:${pct}%"></span></div> ${pct}%</td></tr>`);
+  }
+  const title = axis === "importance" ? "Time by importance" : "Time by urgency";
+  return `<section class="panel"><h2>${title} <span class="sub">· ${esc(win.label)}</span></h2>
+    <table class="tbl"><thead><tr><th>Level</th><th>Time</th><th>Share</th></tr></thead><tbody>${rows.join("")}</tbody></table></section>`;
+}
+
+function sprintSection(p: Projection, config: Config, nowISO: string): string {
+  const open = [...p.periods.values()].find((pr) => pr.open);
+  if (!open) return "";
+  const r = report(p, config, nowISO, { window: "sprint", by: "project" });
+  if (!r.onTrack) return "";
+  const { remainingMin, capacityMin, verdict } = r.onTrack;
+  const pct = capacityMin > 0 ? Math.min(100, Math.round((remainingMin / capacityMin) * 100)) : 0;
+  const risk = verdict !== "on track";
+  return `<section class="panel"><h2>Sprint <span class="sub">· ${esc(open.id)} (${open.start} → ${open.end})</span></h2>
+    <p class="sub">${formatMin(remainingMin)} remaining vs ${formatMin(capacityMin)} capacity</p>
+    <div class="barrow"><div class="bar"><span style="width:${pct}%;background:${risk ? "#c96a6a" : "#5a9b7d"}"></span></div><span class="pct">${esc(verdict)}</span></div>
+  </section>`;
 }
 
 // ---- page ----
@@ -320,6 +443,12 @@ header h1{margin:0 0 10px;font-size:26px;font-weight:600;letter-spacing:-0.02em}
 .panel h2 .sub{text-transform:none;letter-spacing:0;font-weight:400;color:var(--faint)}
 .sub{color:var(--faint);font-size:12.5px;margin:8px 0 24px;font-weight:400}
 .chart{width:100%;height:440px;margin-top:8px}
+.stats{display:flex;flex-wrap:wrap;gap:40px;margin:22px 0 6px}
+.stat .sv{font-size:23px;font-weight:600;letter-spacing:-0.02em;font-variant-numeric:tabular-nums}
+.stat .sl{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:0.06em;margin-top:4px}
+.mix{display:flex;flex-wrap:wrap;gap:18px;margin:16px 0 4px;font-size:12.5px;color:var(--muted)}
+.mix .mi{display:inline-flex;align-items:center;gap:7px}
+.mix .mi::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--c)}
 .kanban{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:28px;margin-top:26px}
 .col h3{margin:0 0 18px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--faint)}
 .col .count{color:var(--faint);font-weight:400;margin-left:5px}
@@ -368,10 +497,14 @@ footer{color:var(--faint);font-size:11px;text-align:center;margin-top:40px}
   <div class="status"><b>${total}</b> task${total === 1 ? "" : "s"} · <b>${doing}</b> in progress · updated ${generated}</div>
   <div class="legend">${legend}</div>
 </header>
-${scatter(p, project)}
 ${kanban(p, nowISO, nowMs, config, project)}
 ${rollup(p, nowISO, project)}
-${wbs(p, config, nowISO, project)}
+${gantt(p, config, nowISO, project)}
+${metricsSection(p, config, nowISO)}
+${scatter(p, project)}
+${axisSection(p, config, nowISO, "importance", project)}
+${axisSection(p, config, nowISO, "urgency", project)}
+${sprintSection(p, config, nowISO)}
 <footer>Auto-generated after each change — do not edit by hand. agent-board.md holds the same data as text.</footer>
 </div>
 </body>
