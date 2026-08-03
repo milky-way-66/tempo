@@ -2,6 +2,11 @@
 
 All notable changes to Tempo, newest first.
 
+## 0.1.3 — 2026-08-03
+
+- Fix backdated-start misclassification; move board.md to repo root (2bc42c2)
+- Enrich board.md with a metrics dashboard (4558019)
+
 ## 0.1.2 — 2026-08-03
 
 - Live board.md + auto-link rituals into Claude Code memory (69bd55d)
