@@ -2,6 +2,10 @@
 
 All notable changes to Tempo, newest first.
 
+## 0.1.12 — 2026-08-04
+
+- Fix empty-parent handling, rebuild WBS, restructure & expand tests (cdd478c)
+
 ## 0.1.11 — 2026-08-03
 
 - Gantt: size bars by working days so short tasks are visible (8421118)
