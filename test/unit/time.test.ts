@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DateTime } from "luxon";
-import { parseInstant, parseDurationMin, formatMin } from "../src/core/time";
+import { parseInstant, parseDurationMin, formatMin } from "../../src/core/time";
 
 const now = DateTime.fromISO("2026-08-03T10:00:00+07:00", { setZone: true });
 const opts = { now, zone: "Asia/Bangkok" }; // +07:00, no DST

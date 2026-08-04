@@ -45,6 +45,17 @@ const DISAMBIG = (candidates: { id: string; title: string }[]) => ({
     "Which task? " + candidates.map((c) => `${c.id} (${c.title})`).join(" · "),
 });
 
+/**
+ * Trim an optional string and fold an empty/whitespace-only value to
+ * `undefined`. Callers may pass `parent: ""` (or `project: ""`, …) meaning "no
+ * value" — treat that as unset rather than storing a bogus empty slug or, on
+ * edit, failing to resolve "".
+ */
+const blank = (s?: string): string | undefined => {
+  const v = s?.trim();
+  return v ? v : undefined;
+};
+
 export class Engine {
   paths: Paths;
   config: Config;
@@ -115,22 +126,24 @@ export class Engine {
   }
 
   private create(f: CreateFields, at?: string): string {
-    if (!f.title) throw new Error("a title is required to create a task");
+    const title = f.title?.trim();
+    if (!title) throw new Error("a title is required to create a task");
     if (f.important === undefined) throw new Error("important (yes/no) is required at creation");
-    const slug = slugify(f.title, new Set(this.projection.tasks.keys()));
+    const slug = slugify(title, new Set(this.projection.tasks.keys()));
+    const est = blank(f.est);
     const ev: TaskCreated = {
       ...this.envelope(at),
       type: "task.created",
       task: slug,
-      title: f.title,
+      title,
       important: f.important,
       urgent: f.urgent ?? false,
       tags: f.tags ?? [],
-      project: f.project,
-      estMin: f.est ? parseDurationMin(f.est) : undefined,
-      deadline: f.deadline,
-      parent: f.parent,
-      period: f.period,
+      project: blank(f.project),
+      estMin: est ? parseDurationMin(est) : undefined,
+      deadline: blank(f.deadline),
+      parent: blank(f.parent),
+      period: blank(f.period),
     };
     this.write(ev);
     return slug;
@@ -286,21 +299,44 @@ export class Engine {
 
     const patch: Partial<Omit<TaskUpdated, "type" | "task" | "id" | "at" | "logged_at" | "source">> = {};
     const changed: string[] = [];
-    if (args.title !== undefined) (patch.title = args.title), changed.push("title");
+    // Optional string fields accept "" (or whitespace) as "unset" — passing an
+    // empty value clears the field instead of erroring, so a caller trying to
+    // remove a parent/project/deadline via "" succeeds like `clear` would.
+    if (args.title !== undefined) {
+      const title = args.title.trim();
+      if (!title) return { error: "title cannot be empty" };
+      (patch.title = title), changed.push("title");
+    }
     if (args.important !== undefined) (patch.important = args.important), changed.push("important");
     if (args.urgent !== undefined) (patch.urgent = args.urgent), changed.push("urgent");
     if (args.tags !== undefined) (patch.tags = args.tags), changed.push("tags");
-    if (args.project !== undefined) (patch.project = args.project), changed.push("project");
-    if (args.est !== undefined) (patch.estMin = parseDurationMin(args.est)), changed.push("est");
-    if (args.deadline !== undefined) (patch.deadline = args.deadline), changed.push("deadline");
-    if (args.period !== undefined) (patch.period = args.period), changed.push("period");
+    if (args.project !== undefined)
+      blank(args.project) === undefined
+        ? ((patch.project = null), changed.push("-project"))
+        : ((patch.project = args.project.trim()), changed.push("project"));
+    if (args.est !== undefined)
+      blank(args.est) === undefined
+        ? ((patch.estMin = null), changed.push("-est"))
+        : ((patch.estMin = parseDurationMin(args.est.trim())), changed.push("est"));
+    if (args.deadline !== undefined)
+      blank(args.deadline) === undefined
+        ? ((patch.deadline = null), changed.push("-deadline"))
+        : ((patch.deadline = args.deadline.trim()), changed.push("deadline"));
+    if (args.period !== undefined)
+      blank(args.period) === undefined
+        ? ((patch.period = null), changed.push("-period"))
+        : ((patch.period = args.period.trim()), changed.push("period"));
     if (args.parent !== undefined) {
-      const pr = resolve(this.projection, args.parent, { includeDone: true });
-      if (pr.kind === "ambiguous") return DISAMBIG(pr.candidates);
-      if (pr.kind === "none") return { error: `no parent task matching "${args.parent}"` };
-      if (pr.id === task) return { error: "a task cannot be its own parent" };
-      if (this.wouldCycle(task, pr.id)) return { error: `parent "${pr.id}" is a descendant of "${task}" (cycle)` };
-      (patch.parent = pr.id), changed.push("parent");
+      if (blank(args.parent) === undefined) {
+        (patch.parent = null), changed.push("-parent");
+      } else {
+        const pr = resolve(this.projection, args.parent.trim(), { includeDone: true });
+        if (pr.kind === "ambiguous") return DISAMBIG(pr.candidates);
+        if (pr.kind === "none") return { error: `no parent task matching "${args.parent}"` };
+        if (pr.id === task) return { error: "a task cannot be its own parent" };
+        if (this.wouldCycle(task, pr.id)) return { error: `parent "${pr.id}" is a descendant of "${task}" (cycle)` };
+        (patch.parent = pr.id), changed.push("parent");
+      }
     }
 
     const CLEARABLE: Record<string, keyof typeof patch> = {

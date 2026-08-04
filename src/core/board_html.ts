@@ -220,20 +220,47 @@ function rollup(p: Projection, nowISO: string, project?: string): string {
 // ---- Work Breakdown calendar (Gantt) ----
 
 // The rolling 3-week window (last · this · next) used to scope the timeline.
-function threeWeek(nowISO: string, config: Config): { start: number; end: number }[] {
+function threeWeek(nowISO: string, config: Config): { lo: number; hi: number } {
   const cur = toDT(nowISO, config).startOf("week");
-  const mk = (d: DateTime) => ({ start: d.toMillis(), end: d.plus({ weeks: 1 }).toMillis() });
-  return [mk(cur.minus({ weeks: 1 })), mk(cur), mk(cur.plus({ weeks: 1 }))];
+  return { lo: cur.minus({ weeks: 1 }).toMillis(), hi: cur.plus({ weeks: 2 }).toMillis() };
 }
 
-// The Work Breakdown as a calendar timeline (ECharts Gantt): each task is a row
-// in WBS order (children indented), work spans are bars over real calendar
-// dates, deadlines are diamonds, and a dashed line marks "today".
-function gantt(p: Projection, config: Config, nowISO: string, project?: string): string {
-  const weeks = threeWeek(nowISO, config);
+interface GanttRow {
+  id: string;
+  title: string;
+  depth: number;
+  k: string;
+  color: string;
+  leftPct: number; // planned-bar start, 0–100 across the window
+  widthPct: number; // planned-bar length, clamped into the window
+  progress: number; // 0–100 logged/est
+  dlPct: number | null; // deadline marker position, or null if outside window
+  overdue: boolean;
+  offLeft: boolean; // bar starts before the window
+  offRight: boolean; // bar ends after the window
+  detail: string; // plain-text tooltip (title attribute)
+}
+
+interface GanttModel {
+  rows: GanttRow[];
+  days: { weekend: boolean; weekStart: boolean; dom: number; label: string }[];
+  weeks: { label: string }[];
+  todayPct: number; // -1 when today is outside the window
+  capPerDay: number;
+}
+
+// Pure layout model for the Work Breakdown timeline: each in-scope task becomes
+// a row (WBS order, children indented) whose planned bar is positioned by exact
+// calendar math across the 3-week window. Kept separate from rendering so the
+// positioning is unit-testable.
+export function ganttModel(p: Projection, config: Config, nowISO: string, project?: string): GanttModel {
+  const { lo, hi } = threeWeek(nowISO, config);
+  const span = hi - lo;
   const nowMs = Date.parse(nowISO);
-  const lo = weeks[0].start,
-    hi = weeks[2].end;
+  const z = zoneOf(config);
+  const DAY = 86400000;
+  const pctOf = (ms: number) => ((ms - lo) / span) * 100;
+
   const inScope = new Set<string>();
   for (const id of p.order) {
     const t = p.tasks.get(id)!;
@@ -242,7 +269,7 @@ function gantt(p: Projection, config: Config, nowISO: string, project?: string):
     const logged = collectIntervals([t], nowISO, lo, hi).length > 0;
     if (t.status !== "done" || logged) inScope.add(id);
   }
-  if (inScope.size === 0) return "";
+  // Pull ancestors in so a child never hangs without its parent row.
   for (const id of [...inScope]) {
     let cur = p.tasks.get(id)?.parent;
     while (cur && p.tasks.has(cur) && !inScope.has(cur) && !p.tasks.get(cur)!.archived) {
@@ -250,7 +277,7 @@ function gantt(p: Projection, config: Config, nowISO: string, project?: string):
       cur = p.tasks.get(cur)?.parent;
     }
   }
-  // Row order: DFS (roots then children), tracking depth for indentation.
+
   const children = new Map<string, string[]>();
   const roots: string[] = [];
   for (const id of p.order) {
@@ -266,25 +293,19 @@ function gantt(p: Projection, config: Config, nowISO: string, project?: string):
   };
   for (const r of roots) walk(r, 0);
 
-  const z = zoneOf(config);
   const open = [...p.periods.values()].find((pr) => pr.open);
   const capPerDay = open?.capacityHoursPerDay ?? config.capacityHoursPerDay; // focus-hours/day
-  const DAY = 86400000;
-  const fmtG = (ms: number) => toDT(new Date(ms).toISOString(), config).toFormat("yyyy-LL-dd HH:mm:ss");
   const startOfToday = toDT(nowISO, config).startOf("day").toMillis();
 
-  // One Frappe-Gantt task per row = its PLANNED timespan; progress fill = logged/est.
-  const tasks = order.map(({ id, depth }) => {
+  const rows: GanttRow[] = order.map(({ id, depth }) => {
     const t = p.tasks.get(id)!;
     const c = cls(t);
     const logged = taskGrossMin(t, nowISO);
     // Planned window: estimate -> calendar days at capacity, backward-scheduled
-    // from the deadline (else forward from today). Fall back to logged extent
-    // or a 1-day block anchored at the deadline/today.
+    // from the deadline (else forward from today); fall back to logged extent or
+    // a 1-day block anchored at the deadline/today.
     let pStart: number, pEnd: number;
     if (t.estMin) {
-      // Length in WORKING days: estimate ÷ capacity-hours-per-day (8 by default),
-      // so 8h = 1 full calendar day. Floor at 1 day so a short task stays visible.
       const workDays = t.estMin / (capPerDay * 60);
       const durMs = Math.max(1, workDays) * DAY;
       if (t.deadline) {
@@ -303,64 +324,92 @@ function gantt(p: Projection, config: Config, nowISO: string, project?: string):
       pEnd = anchor + DAY;
     }
     if (pEnd <= pStart) pEnd = pStart + DAY;
+
+    const offLeft = pStart < lo;
+    const offRight = pEnd > hi;
+    const clampL = Math.max(lo, Math.min(hi, pStart));
+    const clampR = Math.max(lo, Math.min(hi, pEnd));
+    const leftPct = pctOf(clampL);
+    const widthPct = Math.max(0, pctOf(clampR) - leftPct);
+
     const progress = t.estMin ? Math.min(100, Math.round((logged / t.estMin) * 100)) : t.status === "done" ? 100 : 0;
-    const over = !!t.deadline && t.status !== "done" && DateTime.fromISO(t.deadline!, z ? { zone: z } : {}).endOf("day").toMillis() < nowMs;
-    return {
-      id: t.id,
-      name: "  ".repeat(depth) + (depth ? "└ " : "") + t.title,
-      start: fmtG(pStart),
-      end: fmtG(pEnd),
-      progress,
-      custom_class: `cat-${c.k}${over ? "-od" : ""}`, // single token — Frappe classList.add rejects spaces
-      _details:
-        `${esc(t.title)} · ${c.k} ${c.label}` +
-        `<br/>${t.status}${t.project ? " · " + esc(t.project) : ""}` +
-        `<br/>est ${t.estMin ? formatMin(t.estMin) : "—"} · logged ${formatMin(logged)}` +
-        (t.estMin ? ` · ${formatMin(Math.max(0, t.estMin - logged))} left (${progress}%)` : "") +
-        (t.deadline ? `<br/>deadline ${t.deadline}${over ? ` ${ic("exclamation-triangle")} overdue` : ""}` : ""),
-    };
+    const dlMs = t.deadline ? DateTime.fromISO(t.deadline, z ? { zone: z } : {}).endOf("day").toMillis() : null;
+    const overdue = !!dlMs && t.status !== "done" && dlMs < nowMs;
+    const dlPct = dlMs !== null && dlMs >= lo && dlMs <= hi ? pctOf(dlMs) : null;
+
+    const detail =
+      `${t.title} - ${c.k} ${c.label} - ${t.status}` +
+      (t.project ? ` - ${t.project}` : "") +
+      ` - est ${t.estMin ? formatMin(t.estMin) : "-"}, logged ${formatMin(logged)}` +
+      (t.estMin ? `, ${formatMin(Math.max(0, t.estMin - logged))} left (${progress}%)` : "") +
+      (t.deadline ? ` - deadline ${t.deadline}${overdue ? " (overdue)" : ""}` : "");
+
+    return { id: t.id, title: t.title, depth, k: c.k, color: c.color, leftPct, widthPct, progress, dlPct, overdue, offLeft, offRight, detail };
   });
 
-  // Scroll the initial view to the earliest task so bars are on-screen (start
-  // strings sort chronologically). Fall back to today.
-  const scrollTo = tasks.length ? tasks.map((t) => t.start).sort()[0].slice(0, 10) : "today";
+  const days: GanttModel["days"] = [];
+  const startDT = toDT(new Date(lo).toISOString(), config);
+  for (let i = 0; i < 21; i++) {
+    const d = startDT.plus({ days: i });
+    const wd = d.weekday; // 1=Mon .. 7=Sun
+    days.push({ weekend: wd >= 6, weekStart: i % 7 === 0, dom: d.day, label: d.toFormat("ccccc") });
+  }
+  const weeks = [0, 1, 2].map((w) => ({ label: startDT.plus({ weeks: w }).toFormat("LLL d") }));
+  const todayPct = nowMs >= lo && nowMs <= hi ? pctOf(nowMs) : -1;
+
+  return { rows, days, weeks, todayPct, capPerDay };
+}
+
+// The Work Breakdown as a calendar timeline: task titles live in a fixed left
+// column (no text floats over bars); planned bars are positioned by exact date
+// math over the 3-week window with a solid category fill, a logged-progress
+// overlay, a deadline marker, weekend shading, and a dashed "today" line.
+function gantt(p: Projection, config: Config, nowISO: string, project?: string): string {
+  const m = ganttModel(p, config, nowISO, project);
+  if (m.rows.length === 0) return "";
+
+  const headCells = m.days
+    .map((d) => `<div class="g-day${d.weekend ? " we" : ""}${d.weekStart ? " ws" : ""}"><span class="g-dn">${d.dom}</span><span class="g-dw">${d.label}</span></div>`)
+    .join("");
+  // A single background layer draws the day gridlines, weekend shading, and the
+  // today line once behind every row, so they stay pixel-aligned with the header.
+  const bg =
+    m.days.map((d) => `<div class="g-bgd${d.weekend ? " we" : ""}${d.weekStart ? " ws" : ""}"></div>`).join("") +
+    (m.todayPct >= 0 ? `<div class="g-today" style="left:${m.todayPct.toFixed(3)}%"></div>` : "");
+
+  const rows = m.rows
+    .map((r) => {
+      const indent = 10 + r.depth * 16;
+      const barW = r.widthPct > 0 ? Math.max(r.widthPct, 0.8) : 0; // keep a sliver visible
+      const bar =
+        barW > 0
+          ? `<div class="g-bar${r.overdue ? " od" : ""}" style="left:${r.leftPct.toFixed(3)}%;width:${barW.toFixed(3)}%;--c:${r.color}" title="${esc(r.detail)}"><span class="g-fill" style="width:${r.progress}%"></span></div>`
+          : "";
+      const dl = r.dlPct !== null ? `<div class="g-dl${r.overdue ? " od" : ""}" style="left:${r.dlPct.toFixed(3)}%" title="deadline">◆</div>` : "";
+      return `
+      <div class="g-row">
+        <div class="g-label" style="padding-left:${indent}px" title="${esc(r.title)}"><span class="g-k" style="--c:${r.color}">${r.k}</span><span class="g-tt">${r.depth ? "└ " : ""}${esc(r.title)}</span></div>
+        <div class="g-track">${bar}${dl}</div>
+      </div>`;
+    })
+    .join("");
 
   return `
   <section class="panel">
-    <h2>Work Breakdown <span class="sub">· calendar timeline</span></h2>
-    <p class="sub">One bar per task = the planned timespan (estimate at ${capPerDay}h/day, so 8h ≈ 1 day, scheduled to the deadline); the fill shows % logged. Switch Day / Week / Month, jump to Today, hover a bar for details.</p>
-    <div class="gantt-wrap"><div id="gantt"></div></div>
-    <script>
-    (function(){
-      var tasks = ${jsonInline(tasks)};
-      var el = document.getElementById('gantt');
-      if(!el) return;
-      if(typeof Gantt === 'undefined'){ el.innerHTML = '<p class="sub">Gantt library failed to load (needs a connection).</p>'; return; }
-      var detail = {}; tasks.forEach(function(t){ detail[t.id] = t._details; });
-      try {
-        new Gantt(el, tasks, {
-          view_mode: 'Day',
-          view_mode_select: true,
-          today_button: true,
-          scroll_to: ${JSON.stringify(scrollTo)},
-          readonly: true,
-          popup_on: 'hover',
-          bar_height: 26,
-          padding: 18,
-          show_expected_progress: true,
-          holidays: { 'var(--g-weekend-highlight-color)': 'weekend' },
-          popup: function(ctx){
-            try {
-              var id = (ctx && ctx.task && ctx.task.id) || (ctx && ctx.id);
-              var html = detail[id];
-              if (ctx && ctx.set_title) { ctx.set_title(''); ctx.set_details(html); return; }
-              return html;
-            } catch(e){ return; }
-          }
-        });
-      } catch(err){ el.innerHTML = '<p class="sub">Could not render the timeline: ' + (err && err.message ? err.message : err) + '</p>'; }
-    })();
-    </script>
+    <h2>Work Breakdown <span class="sub">· 3-week calendar</span></h2>
+    <p class="sub">One bar per task = the planned timespan (estimate at ${m.capPerDay}h/day, so 8h ≈ 1 day, scheduled to the deadline); the solid fill shows % logged. The dashed line is today; ◆ marks a deadline. Hover a bar for details.</p>
+    <div class="gc-wrap">
+    <div class="gc">
+      <div class="g-row g-head">
+        <div class="g-label g-weeks">${m.weeks.map((w) => `<span>${w.label}</span>`).join("")}</div>
+        <div class="g-track g-grid">${headCells}</div>
+      </div>
+      <div class="g-body">
+        <div class="g-bg">${bg}</div>
+        ${rows}
+      </div>
+    </div>
+    </div>
   </section>`;
 }
 
@@ -508,8 +557,6 @@ export function boardHtml(p: Projection, config: Config, nowISO: string, project
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Tempo Board</title>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@1.2.2/dist/frappe-gantt.css"/>
-<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@1.2.2/dist/frappe-gantt.umd.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"/>
 <style>
 /* Clean Minimalism: soft off-white ground, hairline borders, whitespace over
@@ -542,29 +589,46 @@ header h1{margin:0 0 10px;font-size:26px;font-weight:600;letter-spacing:-0.02em}
 .filter:hover{border-color:var(--muted)}
 .sub{color:var(--faint);font-size:12.5px;margin:8px 0 24px;font-weight:400}
 .chart{width:100%;height:440px;margin-top:8px}
-/* Frappe Gantt — themed to Clean Minimalism via its CSS variables (inherit from .gantt-wrap) */
-.gantt-wrap{margin-top:20px;overflow-x:auto;
-  --g-header-background:var(--panel);--g-row-color:transparent;--g-row-border-color:var(--hair);
-  --g-border-color:var(--line);--g-tick-color:var(--hair);--g-tick-color-thick:var(--line);
-  --g-text-dark:var(--ink);--g-text-muted:var(--muted);--g-text-light:#fff;
-  --g-bar-color:var(--hair);--g-bar-border:var(--line);--g-progress-color:var(--muted);
-  --g-expected-progress:var(--faint);--g-today-highlight:var(--faint);
-  --g-weekend-highlight-color:rgba(0,0,0,0.035);--g-actions-background:var(--panel);--g-popup-actions:var(--muted)}
-@media (prefers-color-scheme:dark){.gantt-wrap{--g-weekend-highlight-color:rgba(255,255,255,0.035)}}
-/* Each bar = a faint category-tinted track (visible even at 0% progress) with a
-   solid category fill for the logged %. */
-.gantt-wrap .bar{stroke-width:1px}
-.gantt-wrap .bar-wrapper[class*="cat-A"] .bar{fill:#c96a6a;fill-opacity:.16;stroke:#c96a6a;stroke-opacity:.55}
-.gantt-wrap .bar-wrapper[class*="cat-A"] .bar-progress{fill:#c96a6a}
-.gantt-wrap .bar-wrapper[class*="cat-B"] .bar{fill:#5a9b7d;fill-opacity:.16;stroke:#5a9b7d;stroke-opacity:.55}
-.gantt-wrap .bar-wrapper[class*="cat-B"] .bar-progress{fill:#5a9b7d}
-.gantt-wrap .bar-wrapper[class*="cat-C"] .bar{fill:#c2a15c;fill-opacity:.16;stroke:#c2a15c;stroke-opacity:.55}
-.gantt-wrap .bar-wrapper[class*="cat-C"] .bar-progress{fill:#c2a15c}
-.gantt-wrap .bar-wrapper[class*="cat-D"] .bar{fill:#9aa1a9;fill-opacity:.2;stroke:#9aa1a9;stroke-opacity:.55}
-.gantt-wrap .bar-wrapper[class*="cat-D"] .bar-progress{fill:#9aa1a9}
-.gantt-wrap .bar-wrapper[class*="-od"] .bar{stroke:#c96a6a;stroke-width:1.75px;stroke-opacity:1}
-.gantt-wrap .bar-label{fill:var(--ink);font-size:12px}
-.gantt-wrap .bar-label.big{fill:var(--muted)}
+/* Work Breakdown — a self-contained CSS calendar (no external Gantt lib). Task
+   titles live in a fixed left column; bars are positioned by % across a 3-week
+   window. Strong category fills, a taller row, and a single aligned gridline
+   layer. */
+.gc-wrap{margin-top:22px;overflow-x:auto}
+.gc{--lw:230px;--rh:40px;min-width:680px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.g-row{display:grid;grid-template-columns:var(--lw) 1fr;min-height:var(--rh)}
+.g-label{display:flex;align-items:center;gap:8px;padding:7px 12px;border-right:1px solid var(--line);border-top:1px solid var(--hair);overflow:hidden;min-width:0;background:var(--panel)}
+.g-k{flex:0 0 auto;width:18px;height:18px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;background:color-mix(in srgb,var(--c,#9aa1a9) 16%,transparent);color:var(--c,#9aa1a9)}
+.g-tt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px;font-weight:600;letter-spacing:-0.01em}
+.g-track{position:relative;min-width:0;border-top:1px solid var(--hair)}
+/* header */
+.g-head .g-label,.g-head .g-track{border-top:0}
+.g-head{background:var(--bg)}
+.g-head .g-label{background:var(--bg)}
+.g-weeks{display:flex;justify-content:space-between;align-items:center;padding-right:14px;color:var(--faint);font-size:11px;font-weight:600}
+.g-grid{display:flex}
+.g-day{flex:1 1 0;border-left:1px solid var(--hair);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:5px 0;line-height:1.15}
+.g-day.ws{border-left:1px solid var(--line)}
+.g-day:first-child{border-left:0}
+.g-day.we{background:var(--hair)}
+.g-dn{font-variant-numeric:tabular-nums;font-weight:600;font-size:11px;color:var(--muted)}
+.g-dw{font-size:8.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint)}
+/* body: one background layer for gridlines + weekend + today, rows above it */
+.g-body{position:relative}
+.g-bg{position:absolute;top:0;bottom:0;left:var(--lw);right:0;display:flex;z-index:0;pointer-events:none}
+.g-bgd{flex:1 1 0;border-left:1px solid var(--hair)}
+.g-bgd.ws{border-left:1px solid var(--line)}
+.g-bgd:first-child{border-left:0}
+.g-bgd.we{background:color-mix(in srgb,var(--muted) 6%,transparent)}
+.g-body .g-row{position:relative;z-index:1}
+.g-body .g-label{background:var(--panel)}
+/* bars: a solid category-tinted track with a strong logged-% fill overlay */
+.g-bar{position:absolute;top:50%;transform:translateY(-50%);height:20px;border-radius:5px;
+  background:color-mix(in srgb,var(--c) 26%,transparent);border:1.5px solid var(--c);overflow:hidden;min-width:3px}
+.g-fill{position:absolute;left:0;top:0;bottom:0;background:var(--c);opacity:.92;border-radius:4px 0 0 4px}
+.g-bar.od{border-color:#c96a6a;border-width:2px;box-shadow:0 0 0 1px #c96a6a55}
+.g-dl{position:absolute;top:50%;transform:translate(-50%,-50%);color:var(--faint);font-size:11px;line-height:1;z-index:2}
+.g-dl.od{color:#c96a6a}
+.g-today{position:absolute;top:0;bottom:0;width:0;border-left:1.5px dashed var(--faint);z-index:2}
 .stats{display:flex;flex-wrap:wrap;gap:40px;margin:22px 0 6px}
 .stat .sv{font-size:23px;font-weight:600;letter-spacing:-0.02em;font-variant-numeric:tabular-nums}
 .stat .sl{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:0.06em;margin-top:4px}

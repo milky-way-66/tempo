@@ -2,10 +2,10 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { upgradeStore, pendingMigrations } from "../src/core/migrate";
-import { readStoreVersion, writeStoreVersion } from "../src/core/version";
-import { defineMigration } from "../src/core/migrations/types";
-import type { Paths } from "../src/core/config";
+import { upgradeStore, pendingMigrations } from "../../src/core/migrate";
+import { readStoreVersion, writeStoreVersion } from "../../src/core/version";
+import { defineMigration } from "../../src/core/migrations/types";
+import type { Paths } from "../../src/core/config";
 
 function tmpStore(): Paths {
   const home = mkdtempSync(join(tmpdir(), "tempo-mig-"));
@@ -124,8 +124,8 @@ describe("upgradeStore", () => {
 
 describe("real migration chain v1 → v3 (imp → scores → flags)", () => {
   it("maps legacy imp all the way to yes/no important/urgent flags", async () => {
-    const { MIGRATIONS } = await import("../src/core/migrations/index");
-    const { replay } = await import("../src/core/replay");
+    const { MIGRATIONS } = await import("../../src/core/migrations/index");
+    const { replay } = await import("../../src/core/replay");
     const paths = tmpStore();
     seed(paths, 1, [
       { id: "c1", at: "2026-08-03T09:00:00Z", logged_at: "2026-08-03T09:00:00Z", source: "live", type: "task.created", task: "a", title: "A", imp: "high", tags: [] },

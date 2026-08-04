@@ -2,12 +2,12 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
-import { Engine } from "../src/core/engine";
-import { agentBoard } from "../src/core/agent_board";
-import { boardHtml } from "../src/core/board_html";
-import { replay } from "../src/core/replay";
-import { ConfigSchema, type Paths } from "../src/core/config";
-import type { Event } from "../src/types";
+import { Engine } from "../../src/core/engine";
+import { agentBoard } from "../../src/core/agent_board";
+import { boardHtml } from "../../src/core/board_html";
+import { replay } from "../../src/core/replay";
+import { ConfigSchema, type Paths } from "../../src/core/config";
+import type { Event } from "../../src/types";
 
 function tmpStore(): Paths {
   const root = mkdtempSync(join(tmpdir(), "tempo-board-"));
@@ -126,19 +126,20 @@ describe("board.html — visual", () => {
     expect(html).toContain('"title":"Tidy"');
   });
 
-  it("renders the Work Breakdown as a Frappe Gantt (task titles, not slugs)", () => {
+  it("renders the Work Breakdown as a self-contained CSS calendar (titles, not slugs)", () => {
     const config = ConfigSchema.parse({ timezone: "UTC" });
     const p = replay([
       { id: "c1", at: "2026-08-03T09:00:00Z", logged_at: "2026-08-03T09:00:00Z", source: "live", type: "task.created", task: "ship-it", title: "Ship it", important: true, urgent: true, estMin: 120, deadline: "2026-08-10", tags: [] },
     ] as unknown as Event[]);
     const html = boardHtml(p, config, "2026-08-03T10:00:00Z");
-    expect(html).toContain("frappe-gantt@1.2.2"); // gantt lib via CDN
-    expect(html).toContain("new Gantt(el, tasks");
-    expect(html).toContain('"name":"Ship it"'); // readable title, not the slug
-    expect(html).toContain('"progress":'); // planned bar with % logged
-    expect(html).toContain("cat-A"); // category color class
-    // custom_class must be a single token — Frappe's classList.add rejects spaces
-    expect(html).not.toMatch(/"custom_class":"[^"]* [^"]*"/);
+    expect(html).toContain("Work Breakdown");
+    expect(html).not.toContain("frappe-gantt"); // no external Gantt lib
+    expect(html).not.toContain("new Gantt("); // rendered as plain HTML, no JS lib
+    expect(html).toContain('class="g-tt">Ship it</span>'); // readable title in the fixed left column
+    expect(html).toContain('class="g-bar'); // a positioned planned bar
+    expect(html).toMatch(/class="g-bar[^"]*"[^>]*style="[^"]*left:[\d.]+%;width:[\d.]+%/); // positioned by %
+    expect(html).toContain("#c96a6a"); // category-A color on the bar
+    expect(html).toContain('class="g-today"'); // today line inside the window
   });
 
   it("shows value KPIs in the metrics section", () => {

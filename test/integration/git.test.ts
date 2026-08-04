@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, readFileSync, existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Engine } from "../src/core/engine";
-import { initStore } from "../src/core/git";
-import type { Paths } from "../src/core/config";
+import { Engine } from "../../src/core/engine";
+import { initStore } from "../../src/core/git";
+import type { Paths } from "../../src/core/config";
 
 function tmpPaths(): Paths {
   const root = mkdtempSync(join(tmpdir(), "tempo-git-"));

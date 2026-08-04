@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Engine } from "../src/core/engine";
-import type { Paths } from "../src/core/config";
+import { Engine } from "../../src/core/engine";
+import type { Paths } from "../../src/core/config";
 
 function tmpPaths(): Paths {
   const home = mkdtempSync(join(tmpdir(), "tempo-test-"));
@@ -157,5 +157,74 @@ describe("engine — check", () => {
     const c = e.check();
     expect(c.ok).toBe(true);
     expect(c.quality.events).toBeGreaterThan(0);
+  });
+});
+
+describe("engine — empty-string optional fields (bug: parent id \"\")", () => {
+  it("add with parent:'' creates a top-level task, not one with a bogus parent", () => {
+    const e = fresh();
+    const { task } = e.add({ title: "Top level", important: true, parent: "" });
+    expect(e.projection.tasks.get(task)!.parent).toBeUndefined();
+    expect(e.check().ok).toBe(true); // no dangling-parent error
+  });
+
+  it("edit with parent:'' detaches from the parent instead of erroring", () => {
+    const e = fresh();
+    e.add({ title: "Parent", important: false });
+    e.add({ title: "Child", important: false });
+    e.edit({ query: "child", parent: "parent" });
+    expect(e.projection.tasks.get("child")!.parent).toBe("parent");
+    const r = e.edit({ query: "child", parent: "" }) as { changed?: string[]; error?: string };
+    expect(r.error).toBeUndefined();
+    expect(r.changed).toContain("-parent");
+    expect(e.projection.tasks.get("child")!.parent).toBeUndefined();
+  });
+
+  it("edit with an empty optional field clears it (project/deadline/est)", () => {
+    const e = fresh();
+    e.add({ title: "T", important: false, project: "api", est: "2h", deadline: "2026-08-10" });
+    e.edit({ query: "t", project: "", est: "", deadline: "" });
+    const t = e.projection.tasks.get("t")!;
+    expect(t.project).toBeUndefined();
+    expect(t.estMin).toBeUndefined();
+    expect(t.deadline).toBeUndefined();
+  });
+
+  it("rejects an all-blank edit rather than silently failing (title:'' is not allowed)", () => {
+    const e = fresh();
+    e.add({ title: "Keep me", important: false });
+    const r = e.edit({ query: "keep", title: "  " }) as { error?: string };
+    expect(r.error).toMatch(/title/);
+    expect(e.projection.tasks.get("keep-me")!.title).toBe("Keep me"); // unchanged
+  });
+
+  it("a multi-field edit that includes parent:'' still applies the other fields (bug 2: update reflects)", () => {
+    const e = fresh();
+    e.add({ title: "Task", important: false });
+    // Previously an empty parent aborted the whole edit; now the rename lands too.
+    const r = e.edit({ query: "task", title: "Renamed", important: true, parent: "" }) as { error?: string };
+    expect(r.error).toBeUndefined();
+    const t = e.projection.tasks.get("task")!;
+    expect(t.title).toBe("Renamed");
+    expect(t.important).toBe(true);
+  });
+});
+
+describe("engine — edits reflect to the board files (bug 2)", () => {
+  function nestedEngine() {
+    const root = mkdtempSync(join(tmpdir(), "tempo-eng-"));
+    const home = join(root, ".tempo");
+    const paths: Paths = { home, eventsFile: join(home, "events.jsonl"), configFile: join(home, "config.json"), gitattributesFile: join(home, ".gitattributes") };
+    return new Engine(paths);
+  }
+  it("re-renders board.html with the new title after an edit", () => {
+    const e = nestedEngine();
+    e.add({ title: "Old title", important: true });
+    e.edit({ query: "old", title: "New title" });
+    const html = readFileSync(e.htmlFile(), "utf8");
+    expect(html).toContain("New title");
+    expect(html).not.toContain("Old title");
+    const md = readFileSync(e.agentBoardFile(), "utf8");
+    expect(md).toContain("New title");
   });
 });

@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import type { Event } from "../src/types";
+import type { Event } from "../../src/types";
 import {
   replay,
   taskGrossMin,
   collectIntervals,
   unionMinutes,
-} from "../src/core/replay";
+} from "../../src/core/replay";
 
 let seq = 0;
 function ev(e: Partial<Event> & { type: Event["type"]; at: string }): Event {
@@ -87,5 +87,30 @@ describe("replay — multitasking gross vs net", () => {
     expect(gross).toBe(120); // 60 + 60
     expect(net).toBe(90); // 09:00–10:30 union
     expect(p.interruptions).toBe(1); // b started with a reason
+  });
+});
+
+describe("replay — normalizes empty optional strings", () => {
+  const NOW2 = "2026-08-03T12:00:00+07:00";
+  it("folds an empty-string parent/project/deadline/period to undefined on create", () => {
+    const p = replay([
+      ev({ type: "task.created", at: NOW2, task: "t", title: "T", important: false, tags: [], parent: "", project: "  ", deadline: "", period: "" } as never),
+    ]);
+    const t = p.tasks.get("t")!;
+    expect(t.parent).toBeUndefined(); // "" is not a real parent slug
+    expect(t.project).toBeUndefined();
+    expect(t.deadline).toBeUndefined();
+    expect(t.period).toBeUndefined();
+  });
+
+  it("treats an empty-string update as clearing the field", () => {
+    const p = replay([
+      ev({ type: "task.created", at: NOW2, task: "t", title: "T", important: false, tags: [], parent: "root", project: "api" } as never),
+      ev({ type: "task.created", at: NOW2, task: "root", title: "Root", important: false, tags: [] } as never),
+      ev({ type: "task.updated", at: NOW2, task: "t", parent: "", project: "" } as never),
+    ]);
+    const t = p.tasks.get("t")!;
+    expect(t.parent).toBeUndefined();
+    expect(t.project).toBeUndefined();
   });
 });

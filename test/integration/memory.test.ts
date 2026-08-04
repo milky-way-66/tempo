@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureRitualsLinked, ritualsLinked, rootClaudeMd } from "../src/core/memory";
-import type { Paths } from "../src/core/config";
+import { ensureRitualsLinked, ritualsLinked, rootClaudeMd } from "../../src/core/memory";
+import type { Paths } from "../../src/core/config";
 
 function tmpStore(): Paths {
   const root = mkdtempSync(join(tmpdir(), "tempo-mem-"));

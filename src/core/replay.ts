@@ -21,6 +21,13 @@ const RANK: Record<Event["type"], number> = {
   "period.closed": 8,
 };
 
+/** Fold "" / whitespace-only optional strings to undefined (older logs may
+ * carry an empty parent/project/etc. written before empties were normalized). */
+function blank(s: string | undefined): string | undefined {
+  const v = s?.trim();
+  return v ? v : undefined;
+}
+
 function cmp(a: Event, b: Event): number {
   if (a.at !== b.at) return a.at < b.at ? -1 : 1;
   if (RANK[a.type] !== RANK[b.type]) return RANK[a.type] - RANK[b.type];
@@ -50,11 +57,11 @@ export function replay(input: Event[]): Projection {
       important: e.important ?? false,
       urgent: e.urgent ?? false,
       tags: e.tags ?? [],
-      project: e.project,
+      project: blank(e.project),
       estMin: e.estMin,
-      deadline: e.deadline,
-      parent: e.parent,
-      period: e.period,
+      deadline: blank(e.deadline),
+      parent: blank(e.parent),
+      period: blank(e.period),
       spans: [],
       status: "todo",
       archived: false,
@@ -92,11 +99,11 @@ export function replay(input: Event[]): Projection {
         if (e.important !== undefined) t.important = e.important;
         if (e.urgent !== undefined) t.urgent = e.urgent;
         if (e.tags !== undefined) t.tags = e.tags;
-        if (e.project !== undefined) t.project = e.project ?? undefined;
+        if (e.project !== undefined) t.project = blank(e.project ?? undefined);
         if (e.estMin !== undefined) t.estMin = e.estMin ?? undefined;
-        if (e.deadline !== undefined) t.deadline = e.deadline ?? undefined;
-        if (e.parent !== undefined) t.parent = e.parent ?? undefined;
-        if (e.period !== undefined) t.period = e.period ?? undefined;
+        if (e.deadline !== undefined) t.deadline = blank(e.deadline ?? undefined);
+        if (e.parent !== undefined) t.parent = blank(e.parent ?? undefined);
+        if (e.period !== undefined) t.period = blank(e.period ?? undefined);
         break;
       }
       case "task.archived": {

@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { buildServer } from "../src/server";
-import { Engine } from "../src/core/engine";
-import type { Paths } from "../src/core/config";
+import { buildServer } from "../../src/server";
+import { Engine } from "../../src/core/engine";
+import type { Paths } from "../../src/core/config";
 
 function tmpPaths(): Paths {
   const home = mkdtempSync(join(tmpdir(), "tempo-mcp-"));
@@ -49,6 +49,31 @@ describe("MCP server", () => {
     const boardText = (board.content as { type: string; text: string }[])[0].text;
     expect(boardText).toContain("DOING");
     expect(boardText).toContain("write-spec");
+  });
+
+  it("accepts an empty parent over MCP (bug: parent id \"\") and edits reflect", async () => {
+    const { client } = await connect();
+    // Empty parent must not error — it means "top-level task".
+    const added = await client.callTool({
+      name: "add",
+      arguments: { title: "Root task", important: true, parent: "" },
+    });
+    expect(added.isError).not.toBe(true);
+    const addedText = (added.content as { type: string; text: string }[])[0].text;
+    expect(addedText).toContain("root-task");
+
+    // A multi-field edit that also passes parent:"" must apply the rename, not abort.
+    const edited = await client.callTool({
+      name: "edit",
+      arguments: { query: "root task", title: "Root renamed", important: false, parent: "" },
+    });
+    expect(edited.isError).not.toBe(true);
+    const editedText = (edited.content as { type: string; text: string }[])[0].text;
+    expect(editedText).not.toContain("error:");
+
+    const board = await client.callTool({ name: "board", arguments: {} });
+    const boardText = (board.content as { type: string; text: string }[])[0].text;
+    expect(boardText).toContain("root-task");
   });
 
   it("rejects invalid arguments (missing required title on add)", async () => {

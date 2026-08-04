@@ -38,7 +38,7 @@ export function buildServer(engine: Engine): McpServer {
       project: z.string().optional(),
       est: z.string().optional().describe('estimate, e.g. "2h", "90m"'),
       deadline: z.string().optional().describe("YYYY-MM-DD"),
-      parent: z.string().optional().describe("WBS parent task slug"),
+      parent: z.string().optional().describe("WBS parent task slug; omit (or pass empty) for a top-level task"),
       period: z.string().optional(),
       at: z.string().optional(),
     },
@@ -127,7 +127,7 @@ export function buildServer(engine: Engine): McpServer {
 
   server.tool(
     "edit",
-    "Edit an existing task's fields: rename its title, or change important/urgent (yes/no)/estimate/deadline/parent/project/tags. Pass only the fields that change; use clear to unset optional fields. Re-renders the board live. For renaming a project across many tasks, use rename instead.",
+    "Edit an existing task's fields: rename its title, or change important/urgent (yes/no)/estimate/deadline/parent/project/tags. Pass only the fields that change; use clear to unset optional fields, or pass an empty string for an optional field to unset it. Re-renders the board live. For renaming a project across many tasks, use rename instead.",
     {
       query: z.string().describe("phrase to resolve the task to edit"),
       title: z.string().optional(),
@@ -137,7 +137,7 @@ export function buildServer(engine: Engine): McpServer {
       project: z.string().optional(),
       est: z.string().optional().describe('estimate, e.g. "2h", "90m"'),
       deadline: z.string().optional().describe("YYYY-MM-DD"),
-      parent: z.string().optional().describe("WBS parent task slug or phrase"),
+      parent: z.string().optional().describe("WBS parent task slug or phrase; pass empty to detach from its parent"),
       period: z.string().optional(),
       clear: z
         .array(z.enum(["project", "est", "deadline", "parent", "period"]))
